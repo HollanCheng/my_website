@@ -4,23 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>家族世系树</title>
+    <!-- 引入 ECharts 图表库 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
+        /* ================== 基础样式 ================== */
         body {
             background-color: #f4f1ea;
             color: #333;
             font-family: "STZhongsong", "SimSun", sans-serif;
             margin: 0;
-            padding: 20px;
-            line-height: 1.6;
+            padding: 0;
+            overflow: hidden; /* 防止页面出现滚动条 */
         }
 
-        /* 密码锁界面 */
+        /* ================== 密码锁界面 ================== */
         #password-screen {
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 80vh;
+            height: 100vh;
         }
         .lock-box {
             background: #fffdf8;
@@ -30,7 +33,7 @@
             border-radius: 8px;
             text-align: center;
         }
-        .lock-box h2 { color: #5c432b; margin-top: 0; }
+        .lock-box h2 { color: #5c432b; margin-top: 0; letter-spacing: 2px; }
         input[type="password"] {
             padding: 10px; font-size: 16px; margin-bottom: 15px;
             border: 1px solid #ccc; border-radius: 4px; width: 200px;
@@ -44,54 +47,45 @@
         button:hover { background-color: #5c432b; }
         #error-msg { color: #c0392b; font-size: 14px; margin-top: 10px; display: none; }
 
-        /* 树状图容器 */
+        /* ================== 树状图容器 ================== */
         #tree-container {
             display: none; /* 初始隐藏 */
-            max-width: 1000px;
-            margin: 0 auto;
-            background: #fffdf8;
-            padding: 30px 40px;
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* 悬浮提示面板 */
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 253, 248, 0.9);
+            padding: 15px;
             border: 1px solid #e0d8c8;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            pointer-events: none; /* 穿透点击事件 */
+            color: #5c432b;
+            z-index: 10;
         }
-        h1 { text-align: center; color: #2c1e11; letter-spacing: 5px; border-bottom: 2px solid #8b6c4a; padding-bottom: 15px; margin-bottom: 30px; }
-        
-        /* 树节点样式 */
-        ul.tree { list-style-type: none; padding-left: 20px; margin: 0; border-left: 1px dashed #ccc; }
-        ul.tree.root { padding-left: 0; border-left: none; }
-        li { margin: 8px 0; position: relative; }
-        
-        details {
-            cursor: pointer;
-            outline: none;
-        }
-        summary {
-            display: inline-block;
-            padding: 4px 8px;
+        .info-panel h3 { margin: 0 0 10px 0; font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 5px;}
+        .info-panel p { margin: 5px 0; font-size: 14px; color: #666; }
+
+        /* 返回按钮 */
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #7a5c3d;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
             border-radius: 4px;
-            font-weight: bold;
-            color: #333;
-            transition: background 0.2s;
-            user-select: none;
-        }
-        summary:hover { background-color: #eee; }
-        
-        .person-info {
-            font-weight: normal;
             font-size: 14px;
-            color: #666;
-            margin-left: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10;
         }
-        .gen-badge {
-            background-color: #8b6c4a; color: white; 
-            font-size: 12px; padding: 2px 6px; border-radius: 10px; margin-right: 5px;
-        }
-        .leaf-node { padding: 4px 8px; display: inline-block; font-weight: bold; }
-        
-        /* 回到顶部按钮 */
-        .back-btn { display: block; text-align: center; margin-top: 40px; color: #7a5c3d; text-decoration: none; font-size: 16px; }
-        .back-btn:hover { text-decoration: underline; }
+        .back-btn:hover { background: #5c432b; }
     </style>
 </head>
 <body>
@@ -108,935 +102,1034 @@
         </div>
     </div>
 
-    <!-- 2. 树状图展示 -->
+    <!-- 2. 图表展示区 -->
     <div id="tree-container">
-        <h1>成桥成氏世系树</h1>
-        <div id="tree-root"></div>
+        <div class="info-panel">
+            <h3>成桥成氏世系树</h3>
+            <p>💡 鼠标滚轮可缩放，按住空白处可拖拽</p>
+            <p>👉 点击人名旁的小圆点可展开/折叠后代</p>
+        </div>
         <a href="index.html" class="back-btn">← 返回首页</a>
+        
+        <!-- ECharts 渲染容器 -->
+        <div id="main" style="width: 100%; height: 100%;"></div>
     </div>
 
     <script>
         // ================= 密码设置 =================
-        const SECRET_PWD = "chengqiao2026"; // ⚠️ 你可以在这里修改密码
+        const SECRET_PWD = "chengqiao2026"; 
 
         function checkPwd() {
             const input = document.getElementById("pwd-input").value;
             if (input === SECRET_PWD) {
                 document.getElementById("password-screen").style.display = "none";
                 document.getElementById("tree-container").style.display = "block";
-                renderTree(); // 密码正确后渲染树
+                renderChart(); // 密码正确后渲染图表
             } else {
                 document.getElementById("error-msg").style.display = "block";
             }
         }
 
         // ================= 数据源 =================
-        // 这是你提供的表格数据转换成的JSON，包含了ID、世次、姓名、配偶、父亲ID
-        const rawData = [
-            {"id":1,"gen":1,"name":"成桓","spouse":"相氏","parentId":null},
-            {"id":2,"gen":2,"name":"成高楼","spouse":"","parentId":1},
-            {"id":3,"gen":2,"name":"成高发","spouse":"相氏","parentId":1},
-            {"id":4,"gen":3,"name":"成有","spouse":"王氏","parentId":3},
-            {"id":5,"gen":4,"name":"成青州","spouse":"周氏","parentId":4},
-            {"id":6,"gen":4,"name":"成梁州","spouse":"吉氏","parentId":4},
-            {"id":7,"gen":4,"name":"成豫州","spouse":"郁氏","parentId":4},
-            {"id":8,"gen":5,"name":"成子君","spouse":"姜氏","parentId":5},
-            {"id":9,"gen":5,"name":"成子和","spouse":"郁氏","parentId":6},
-            {"id":10,"gen":5,"name":"成子久","spouse":"","parentId":7},
-            {"id":11,"gen":6,"name":"成维生","spouse":"罗氏","parentId":8},
-            {"id":12,"gen":7,"name":"成景涛","spouse":"皇甫氏","parentId":11},
-            {"id":13,"gen":7,"name":"成景淮","spouse":"曹氏","parentId":11},
-            {"id":14,"gen":7,"name":"成景涵","spouse":"皇甫氏","parentId":11},
-            {"id":15,"gen":8,"name":"成栋","spouse":"吴氏","parentId":12},
-            {"id":16,"gen":8,"name":"成权","spouse":"王氏","parentId":12},
-            {"id":17,"gen":8,"name":"成相","spouse":"葛氏","parentId":12},
-            {"id":18,"gen":8,"name":"成桐","spouse":"张氏","parentId":12},
-            {"id":19,"gen":8,"name":"成柱","spouse":"王氏","parentId":13},
-            {"id":20,"gen":8,"name":"成楫","spouse":"朱华氏","parentId":14},
-            {"id":21,"gen":8,"name":"成枹","spouse":"王苏氏","parentId":14},
-            {"id":22,"gen":8,"name":"成檀","spouse":"皇甫氏","parentId":14},
-            {"id":23,"gen":9,"name":"成兆显","spouse":"陈氏","parentId":15},
-            {"id":24,"gen":9,"name":"成兆英","spouse":"朱氏","parentId":16},
-            {"id":25,"gen":9,"name":"成履智","spouse":"王氏","parentId":17},
-            {"id":26,"gen":9,"name":"成履仁","spouse":"郑氏","parentId":18},
-            {"id":27,"gen":9,"name":"成履义","spouse":"潘氏","parentId":18},
-            {"id":28,"gen":9,"name":"成履敬","spouse":"皇甫氏","parentId":18},
-            {"id":29,"gen":9,"name":"成履信","spouse":"胡氏","parentId":18},
-            {"id":30,"gen":9,"name":"成履祯","spouse":"蒋氏","parentId":19},
-            {"id":31,"gen":9,"name":"成履祥","spouse":"左氏","parentId":19},
-            {"id":32,"gen":9,"name":"成履顺","spouse":"王氏","parentId":19},
-            {"id":33,"gen":9,"name":"成礼泰","spouse":"徐氏","parentId":20},
-            {"id":34,"gen":9,"name":"成礼成","spouse":"王氏","parentId":20},
-            {"id":35,"gen":9,"name":"成礼巽","spouse":"左氏/华氏","parentId":20},
-            {"id":36,"gen":9,"name":"成礼萃","spouse":"米氏","parentId":20},
-            {"id":37,"gen":9,"name":"成履谦","spouse":"朱氏","parentId":21},
-            {"id":38,"gen":9,"name":"成礼丰","spouse":"余氏/左氏","parentId":22},
-            {"id":39,"gen":9,"name":"成礼文","spouse":"洪氏","parentId":22},
-            {"id":40,"gen":9,"name":"成礼豫","spouse":"朱氏","parentId":22},
-            {"id":41,"gen":10,"name":"成璞","spouse":"陈氏","parentId":23},
-            {"id":42,"gen":10,"name":"成錧","spouse":"嵇氏","parentId":24},
-            {"id":43,"gen":10,"name":"成镯","spouse":"沈氏","parentId":24},
-            {"id":44,"gen":10,"name":"成儒","spouse":"王氏","parentId":25},
-            {"id":45,"gen":10,"name":"成玘","spouse":"姜氏","parentId":26},
-            {"id":46,"gen":10,"name":"成台","spouse":"","parentId":29},
-            {"id":47,"gen":10,"name":"成珠","spouse":"","parentId":29},
-            {"id":48,"gen":10,"name":"成琪","spouse":"","parentId":29},
-            {"id":49,"gen":10,"name":"成曜","spouse":"朱氏","parentId":30},
-            {"id":50,"gen":10,"name":"成昶","spouse":"郑氏","parentId":30},
-            {"id":51,"gen":10,"name":"成早","spouse":"蒋氏/潘氏","parentId":30},
-            {"id":52,"gen":10,"name":"成明","spouse":"","parentId":31},
-            {"id":53,"gen":10,"name":"成询","spouse":"","parentId":31},
-            {"id":54,"gen":10,"name":"成㫛","spouse":"王氏","parentId":32},
-            {"id":55,"gen":10,"name":"成昉","spouse":"赵氏","parentId":32},
-            {"id":56,"gen":10,"name":"成晧","spouse":"吴氏","parentId":32},
-            {"id":57,"gen":10,"name":"成玺","spouse":"费氏/陈氏/朱氏","parentId":33},
-            {"id":58,"gen":10,"name":"成珞","spouse":"皇甫氏","parentId":35},
-            {"id":59,"gen":10,"name":"成𤤮","spouse":"万氏","parentId":35},
-            {"id":60,"gen":10,"name":"成琏","spouse":"朱氏","parentId":36},
-            {"id":61,"gen":10,"name":"成琇","spouse":"徐氏","parentId":37},
-            {"id":62,"gen":10,"name":"成瑶","spouse":"苏氏","parentId":37},
-            {"id":63,"gen":10,"name":"成珺","spouse":"朱氏","parentId":38},
-            {"id":64,"gen":10,"name":"成珝","spouse":"薛氏","parentId":38},
-            {"id":65,"gen":10,"name":"成瑜","spouse":"朱氏","parentId":38},
-            {"id":66,"gen":10,"name":"成珃","spouse":"皇甫氏","parentId":39},
-            {"id":67,"gen":10,"name":"成玿","spouse":"洪氏","parentId":39},
-            {"id":68,"gen":10,"name":"成琳","spouse":"徐氏","parentId":40},
-            {"id":69,"gen":6,"name":"成维德","spouse":"胡氏","parentId":9},
-            {"id":70,"gen":7,"name":"成景源","spouse":"郭氏","parentId":69},
-            {"id":71,"gen":8,"name":"成桡","spouse":"","parentId":70},
-            {"id":72,"gen":9,"name":"成礼振","spouse":"","parentId":71},
-            {"id":73,"gen":9,"name":"成礼坤","spouse":"","parentId":71},
-            {"id":74,"gen":10,"name":"成玖","spouse":"","parentId":72},
-            {"id":75,"gen":10,"name":"成琢","spouse":"","parentId":73},
-            {"id":76,"gen":11,"name":"成金林","spouse":"徐氏","parentId":41},
-            {"id":77,"gen":12,"name":"成玉嶺","spouse":"善氏","parentId":76},
-            {"id":78,"gen":13,"name":"成廷梧","spouse":"","parentId":77},
-            {"id":79,"gen":13,"name":"成廷超","spouse":"邵氏","parentId":77},
-            {"id":80,"gen":13,"name":"成廷科","spouse":"韩秀英","parentId":77},
-            {"id":81,"gen":13,"name":"成廷选","spouse":"张兴兰","parentId":77},
-            {"id":82,"gen":14,"name":"成桂英","spouse":"","parentId":79},
-            {"id":83,"gen":14,"name":"成桂春","spouse":"","parentId":79},
-            {"id":84,"gen":14,"name":"成桂美","spouse":"","parentId":79},
-            {"id":85,"gen":14,"name":"成士伟","spouse":"曹从兰","parentId":79},
-            {"id":86,"gen":14,"name":"成士付","spouse":"袁美华","parentId":79},
-            {"id":87,"gen":14,"name":"成士法","spouse":"朱兰英","parentId":80},
-            {"id":88,"gen":14,"name":"成士才","spouse":"罗会云","parentId":81},
-            {"id":89,"gen":14,"name":"成士杰","spouse":"蒋翠华","parentId":81},
-            {"id":90,"gen":14,"name":"成士平","spouse":"","parentId":81},
-            {"id":91,"gen":14,"name":"成士珠","spouse":"朱顶梅","parentId":81},
-            {"id":92,"gen":14,"name":"成梅英","spouse":"","parentId":81},
-            {"id":93,"gen":15,"name":"成素珍","spouse":"","parentId":85},
-            {"id":94,"gen":15,"name":"成春勤","spouse":"","parentId":85},
-            {"id":95,"gen":15,"name":"成素红","spouse":"","parentId":85},
-            {"id":96,"gen":15,"name":"成素玲","spouse":"","parentId":85},
-            {"id":97,"gen":15,"name":"成云东","spouse":"陈群","parentId":85},
-            {"id":98,"gen":15,"name":"成争","spouse":"","parentId":86},
-            {"id":99,"gen":15,"name":"成光","spouse":"潘海亚","parentId":86},
-            {"id":100,"gen":15,"name":"成建","spouse":"","parentId":87},
-            {"id":101,"gen":15,"name":"成群","spouse":"任玉银","parentId":87},
-            {"id":102,"gen":15,"name":"成宏","spouse":"","parentId":87},
-            {"id":103,"gen":15,"name":"成图","spouse":"","parentId":87},
-            {"id":104,"gen":15,"name":"成英","spouse":"王金梅/赵双娥","parentId":87},
-            {"id":105,"gen":15,"name":"成聚","spouse":"","parentId":87},
-            {"id":106,"gen":15,"name":"成东洲","spouse":"颜平平","parentId":88},
-            {"id":107,"gen":15,"name":"成荣梅","spouse":"","parentId":88},
-            {"id":108,"gen":15,"name":"成磊","spouse":"张林","parentId":89},
-            {"id":109,"gen":15,"name":"成东剑","spouse":"左广梅","parentId":91},
-            {"id":110,"gen":15,"name":"成倩","spouse":"","parentId":91},
-            {"id":111,"gen":16,"name":"成羽","spouse":"","parentId":97},
-            {"id":112,"gen":16,"name":"成中腾","spouse":"梁玉","parentId":101},
-            {"id":113,"gen":17,"name":"成雨锐","spouse":"","parentId":112},
-            {"id":114,"gen":16,"name":"成继宗","spouse":"","parentId":104},
-            {"id":115,"gen":16,"name":"成中畅","spouse":"","parentId":104},
-            {"id":116,"gen":16,"name":"成中轩","spouse":"","parentId":106},
-            {"id":117,"gen":16,"name":"成轩移","spouse":"","parentId":106},
-            {"id":118,"gen":16,"name":"成于轩","spouse":"","parentId":108},
-            {"id":119,"gen":16,"name":"成佩佩","spouse":"","parentId":109},
-            {"id":120,"gen":16,"name":"成忠峻","spouse":"","parentId":109},
-            {"id":121,"gen":11,"name":"成金伦","spouse":"徐氏","parentId":42},
-            {"id":122,"gen":12,"name":"成玉奎","spouse":"朱氏","parentId":121},
-            {"id":123,"gen":12,"name":"成玉堦","spouse":"张氏","parentId":121},
-            {"id":124,"gen":12,"name":"成玉恺","spouse":"朱氏","parentId":121},
-            {"id":125,"gen":12,"name":"成玉？","spouse":"吴氏","parentId":121},
-            {"id":126,"gen":13,"name":"成廷干","spouse":"杨氏/陈氏","parentId":122},
-            {"id":127,"gen":13,"name":"成廷良","spouse":"吴氏","parentId":122},
-            {"id":128,"gen":13,"name":"成廷万","spouse":"","parentId":123},
-            {"id":129,"gen":13,"name":"成廷元","spouse":"","parentId":123},
-            {"id":130,"gen":13,"name":"成廷玉","spouse":"","parentId":123},
-            {"id":131,"gen":13,"name":"成廷章","spouse":"李氏","parentId":123},
-            {"id":132,"gen":14,"name":"成士道","spouse":"高凤英","parentId":130},
-            {"id":133,"gen":14,"name":"成士友","spouse":"王学珍","parentId":130},
-            {"id":134,"gen":14,"name":"成士昌","spouse":"王玉兰","parentId":131},
-            {"id":135,"gen":14,"name":"成士隆","spouse":"","parentId":131},
-            {"id":136,"gen":15,"name":"成旭东","spouse":"洪秀英","parentId":132},
-            {"id":137,"gen":15,"name":"成亚东","spouse":"何玉珍","parentId":132},
-            {"id":138,"gen":15,"name":"成盛平","spouse":"","parentId":133},
-            {"id":139,"gen":15,"name":"成元东","spouse":"夏国梅","parentId":133},
-            {"id":140,"gen":15,"name":"成宝东","spouse":"任玉平","parentId":133},
-            {"id":141,"gen":15,"name":"成礼东","spouse":"","parentId":133},
-            {"id":142,"gen":15,"name":"成明东","spouse":"王宝美","parentId":134},
-            {"id":143,"gen":15,"name":"成平东","spouse":"谢义香","parentId":134},
-            {"id":144,"gen":15,"name":"成高东","spouse":"刘月红","parentId":134},
-            {"id":145,"gen":15,"name":"成亮东","spouse":"戴金云","parentId":134},
-            {"id":146,"gen":15,"name":"成美萍","spouse":"","parentId":134},
-            {"id":147,"gen":15,"name":"成丽萍","spouse":"","parentId":134},
-            {"id":148,"gen":16,"name":"成兵","spouse":"吴宝梅","parentId":136},
-            {"id":149,"gen":16,"name":"成军","spouse":"王绍涵","parentId":136},
-            {"id":150,"gen":17,"name":"成梦圆","spouse":"","parentId":149},
-            {"id":151,"gen":16,"name":"成月萍","spouse":"","parentId":136},
-            {"id":152,"gen":16,"name":"成萍","spouse":"","parentId":136},
-            {"id":153,"gen":16,"name":"成大勇","spouse":"","parentId":137},
-            {"id":154,"gen":17,"name":"成宇杭","spouse":"","parentId":153},
-            {"id":155,"gen":16,"name":"成海罗","spouse":"","parentId":137},
-            {"id":156,"gen":17,"name":"成晨","spouse":"","parentId":155},
-            {"id":157,"gen":16,"name":"成中峰","spouse":"刘慧","parentId":139},
-            {"id":158,"gen":17,"name":"成梓涵","spouse":"","parentId":157},
-            {"id":159,"gen":17,"name":"成梓茹","spouse":"","parentId":157},
-            {"id":160,"gen":16,"name":"成中娟","spouse":"","parentId":139},
-            {"id":161,"gen":16,"name":"成中伟","spouse":"郭赵娟","parentId":140},
-            {"id":162,"gen":17,"name":"成家凯","spouse":"","parentId":161},
-            {"id":163,"gen":17,"name":"成梓萱","spouse":"","parentId":161},
-            {"id":164,"gen":16,"name":"成中强","spouse":"袁曹强","parentId":141},
-            {"id":165,"gen":17,"name":"成梓墨","spouse":"","parentId":164},
-            {"id":166,"gen":16,"name":"成中亚","spouse":"许爱萍","parentId":142},
-            {"id":167,"gen":17,"name":"成宇洁","spouse":"","parentId":166},
-            {"id":168,"gen":17,"name":"成家燕","spouse":"","parentId":166},
-            {"id":169,"gen":16,"name":"成香","spouse":"","parentId":142},
-            {"id":170,"gen":16,"name":"成军","spouse":"车殿霜","parentId":143},
-            {"id":171,"gen":17,"name":"成佳佳","spouse":"","parentId":170},
-            {"id":172,"gen":17,"name":"成家睿","spouse":"","parentId":170},
-            {"id":173,"gen":16,"name":"成健","spouse":"徐雪梅/孙其芳","parentId":143},
-            {"id":174,"gen":17,"name":"成梓卓","spouse":"","parentId":173},
-            {"id":175,"gen":17,"name":"成晓玉","spouse":"","parentId":173},
-            {"id":176,"gen":16,"name":"成林","spouse":"陈晓云","parentId":145},
-            {"id":177,"gen":17,"name":"成恩瑾","spouse":"","parentId":176},
-            {"id":178,"gen":16,"name":"成丹风","spouse":"","parentId":145},
-            {"id":179,"gen":11,"name":"成金镰","spouse":"稽氏","parentId":43},
-            {"id":180,"gen":12,"name":"成玉坦","spouse":"曹氏","parentId":179},
-            {"id":181,"gen":12,"name":"成玉培","spouse":"姜氏","parentId":179},
-            {"id":182,"gen":13,"name":"成廷珍","spouse":"刘氏","parentId":180},
-            {"id":183,"gen":13,"name":"成廷英","spouse":"葛氏/朱氏","parentId":181},
-            {"id":184,"gen":13,"name":"成廷杰","spouse":"","parentId":181},
-            {"id":185,"gen":13,"name":"成廷柱","spouse":"姜氏","parentId":181},
-            {"id":186,"gen":14,"name":"成士功","spouse":"","parentId":182},
-            {"id":187,"gen":14,"name":"成士桥","spouse":"王氏","parentId":182},
-            {"id":188,"gen":14,"name":"成士俭","spouse":"胡希梅","parentId":183},
-            {"id":189,"gen":14,"name":"成士龙","spouse":"吴兰英","parentId":183},
-            {"id":190,"gen":14,"name":"成士虎","spouse":"王素华","parentId":183},
-            {"id":191,"gen":14,"name":"成银生","spouse":"陈玉兰","parentId":185},
-            {"id":192,"gen":14,"name":"成康","spouse":"张巧云","parentId":185},
-            {"id":193,"gen":14,"name":"成军","spouse":"唐海梅","parentId":185},
-            {"id":194,"gen":14,"name":"成列","spouse":"朱海芹","parentId":185},
-            {"id":195,"gen":15,"name":"成一东","spouse":"李红艳","parentId":187},
-            {"id":196,"gen":15,"name":"成二东","spouse":"张梅","parentId":187},
-            {"id":197,"gen":15,"name":"成三东","spouse":"赵永霞","parentId":187},
-            {"id":198,"gen":15,"name":"成耀东","spouse":"王其林","parentId":188},
-            {"id":199,"gen":15,"name":"成华东","spouse":"许学伟","parentId":188},
-            {"id":200,"gen":15,"name":"成平","spouse":"文凌志","parentId":188},
-            {"id":201,"gen":15,"name":"成汉东","spouse":"陈宝娟","parentId":188},
-            {"id":202,"gen":15,"name":"成卫东","spouse":"孙霞","parentId":188},
-            {"id":203,"gen":15,"name":"成霞","spouse":"葛家胜","parentId":188},
-            {"id":204,"gen":15,"name":"成晟盛","spouse":"","parentId":189},
-            {"id":205,"gen":15,"name":"成庆","spouse":"","parentId":189},
-            {"id":206,"gen":15,"name":"成继东","spouse":"姚晓梅","parentId":190},
-            {"id":207,"gen":15,"name":"成海东","spouse":"宋金风","parentId":190},
-            {"id":208,"gen":15,"name":"成东","spouse":"","parentId":191},
-            {"id":209,"gen":15,"name":"成叙","spouse":"","parentId":192},
-            {"id":210,"gen":15,"name":"成欢","spouse":"","parentId":193},
-            {"id":211,"gen":16,"name":"成雨","spouse":"","parentId":196},
-            {"id":212,"gen":16,"name":"成炳屹","spouse":"","parentId":198},
-            {"id":213,"gen":16,"name":"成栩","spouse":"","parentId":199},
-            {"id":214,"gen":16,"name":"成璐","spouse":"","parentId":201},
-            {"id":215,"gen":16,"name":"成哲","spouse":"","parentId":202},
-            {"id":216,"gen":16,"name":"成艺","spouse":"","parentId":202},
-            {"id":217,"gen":16,"name":"成晔轩","spouse":"","parentId":204},
-            {"id":218,"gen":16,"name":"成忠文","spouse":"王志月","parentId":206},
-            {"id":219,"gen":16,"name":"成志桐","spouse":"","parentId":206},
-            {"id":220,"gen":16,"name":"成忠民","spouse":"","parentId":207},
-            {"id":221,"gen":16,"name":"成圣言","spouse":"","parentId":207},
-            {"id":222,"gen":11,"name":"成金洪","spouse":"梁氏","parentId":44},
-            {"id":223,"gen":12,"name":"成玉田","spouse":"","parentId":222},
-            {"id":224,"gen":11,"name":"成金雪","spouse":"秦氏","parentId":null},
-            {"id":225,"gen":12,"name":"成玉端","spouse":"朱氏","parentId":224},
-            {"id":226,"gen":12,"name":"成玉宽","spouse":"王氏/潘氏","parentId":224},
-            {"id":227,"gen":13,"name":"成廷秀","spouse":"王银兰","parentId":225},
-            {"id":228,"gen":13,"name":"成廷和","spouse":"赵桂英","parentId":226},
-            {"id":229,"gen":13,"name":"成廷利","spouse":"","parentId":226},
-            {"id":230,"gen":13,"name":"成竹萍","spouse":"","parentId":226},
-            {"id":231,"gen":13,"name":"成廷木","spouse":"王素红","parentId":226},
-            {"id":232,"gen":13,"name":"成廷林","spouse":"荀得清","parentId":226},
-            {"id":233,"gen":14,"name":"成士必","spouse":"姚莉君","parentId":227},
-            {"id":234,"gen":14,"name":"成士顺","spouse":"王红梅","parentId":227},
-            {"id":235,"gen":14,"name":"成士艳","spouse":"","parentId":227},
-            {"id":236,"gen":14,"name":"成士康","spouse":"皇甫兰","parentId":228},
-            {"id":237,"gen":14,"name":"成跃","spouse":"徐东亚","parentId":231},
-            {"id":238,"gen":14,"name":"成冲","spouse":"蔡文珍","parentId":231},
-            {"id":239,"gen":14,"name":"成星星","spouse":"朱艳","parentId":232},
-            {"id":240,"gen":14,"name":"成丹丹","spouse":"","parentId":232},
-            {"id":241,"gen":14,"name":"成星宇","spouse":"陈怡","parentId":232},
-            {"id":242,"gen":15,"name":"成雨莹","spouse":"","parentId":233},
-            {"id":243,"gen":15,"name":"成雨蒙","spouse":"","parentId":233},
-            {"id":244,"gen":15,"name":"成轩","spouse":"郭青","parentId":234},
-            {"id":245,"gen":15,"name":"成娜娜","spouse":"","parentId":234},
-            {"id":246,"gen":15,"name":"成芹","spouse":"","parentId":236},
-            {"id":247,"gen":15,"name":"成锐","spouse":"","parentId":236},
-            {"id":248,"gen":15,"name":"成凡凡","spouse":"","parentId":237},
-            {"id":249,"gen":15,"name":"成乐乐","spouse":"","parentId":237},
-            {"id":250,"gen":15,"name":"成敬铭","spouse":"","parentId":238},
-            {"id":251,"gen":15,"name":"成静雅","spouse":"","parentId":239},
-            {"id":252,"gen":15,"name":"成文雅","spouse":"","parentId":239},
-            {"id":253,"gen":15,"name":"成泽希","spouse":"","parentId":239},
-            {"id":254,"gen":16,"name":"成玥霖","spouse":"","parentId":244},
-            {"id":255,"gen":11,"name":"成金学","spouse":"张氏","parentId":48},
-            {"id":256,"gen":12,"name":"成玉刚","spouse":"胡维芳","parentId":255},
-            {"id":257,"gen":12,"name":"成玉章","spouse":"","parentId":255},
-            {"id":258,"gen":13,"name":"成秀萍","spouse":"","parentId":256},
-            {"id":259,"gen":13,"name":"成廷龙","spouse":"费秀英","parentId":256},
-            {"id":260,"gen":13,"name":"成秀香","spouse":"","parentId":256},
-            {"id":261,"gen":13,"name":"成秀芳","spouse":"","parentId":256},
-            {"id":262,"gen":13,"name":"成廷虎","spouse":"姜华林/刘智美/王孝芹","parentId":256},
-            {"id":263,"gen":13,"name":"成廷华","spouse":"王桂华","parentId":256},
-            {"id":264,"gen":13,"name":"成秀梅","spouse":"","parentId":256},
-            {"id":265,"gen":14,"name":"成翠红","spouse":"","parentId":259},
-            {"id":266,"gen":14,"name":"成士军","spouse":"董春梅","parentId":259},
-            {"id":267,"gen":14,"name":"成翠莲","spouse":"","parentId":262},
-            {"id":268,"gen":14,"name":"成引来","spouse":"金闻娟","parentId":262},
-            {"id":269,"gen":14,"name":"成翠兰","spouse":"","parentId":262},
-            {"id":270,"gen":14,"name":"成士春","spouse":"齐闻洁","parentId":263},
-            {"id":271,"gen":15,"name":"成宇轩","spouse":"","parentId":266},
-            {"id":272,"gen":15,"name":"成珺妍","spouse":"","parentId":268},
-            {"id":273,"gen":15,"name":"成毅","spouse":"","parentId":270},
-            {"id":274,"gen":11,"name":"成金镯","spouse":"王氏","parentId":49},
-            {"id":275,"gen":12,"name":"成玉善","spouse":"朱氏","parentId":274},
-            {"id":276,"gen":12,"name":"成玉凤","spouse":"王氏","parentId":274},
-            {"id":277,"gen":12,"name":"成玉惠","spouse":"梁氏","parentId":274},
-            {"id":278,"gen":12,"name":"成玉慈","spouse":"朱氏","parentId":274},
-            {"id":279,"gen":13,"name":"成廷玺","spouse":"朱氏","parentId":276},
-            {"id":280,"gen":13,"name":"成廷俊","spouse":"朱氏","parentId":276},
-            {"id":281,"gen":13,"name":"成廷彩","spouse":"朱？/朱从兰","parentId":277},
-            {"id":282,"gen":13,"name":"成廷彦","spouse":"陈氏","parentId":278},
-            {"id":283,"gen":14,"name":"成桂英","spouse":"","parentId":279},
-            {"id":284,"gen":14,"name":"成士华","spouse":"夏玉美","parentId":279},
-            {"id":285,"gen":14,"name":"成士中","spouse":"徐珍美","parentId":279},
-            {"id":286,"gen":14,"name":"成士朋","spouse":"黄兰英","parentId":279},
-            {"id":287,"gen":14,"name":"成彩云","spouse":"","parentId":279},
-            {"id":288,"gen":14,"name":"成云","spouse":"朱霞英","parentId":279},
-            {"id":289,"gen":14,"name":"成士明","spouse":"赵长美","parentId":280},
-            {"id":290,"gen":14,"name":"成士军","spouse":"王秀英","parentId":280},
-            {"id":291,"gen":14,"name":"成士林","spouse":"梁桂","parentId":281},
-            {"id":292,"gen":14,"name":"成飞","spouse":"王素林","parentId":281},
-            {"id":293,"gen":14,"name":"成桂平","spouse":"","parentId":281},
-            {"id":294,"gen":14,"name":"成桂如","spouse":"","parentId":281},
-            {"id":295,"gen":14,"name":"成正","spouse":"刘敏","parentId":281},
-            {"id":296,"gen":14,"name":"成小权","spouse":"王桂琴","parentId":281},
-            {"id":297,"gen":14,"name":"成士洋","spouse":"朱士芳","parentId":282},
-            {"id":298,"gen":14,"name":"成士海","spouse":"杜玉珍","parentId":282},
-            {"id":299,"gen":14,"name":"成士河","spouse":"戚桂莲","parentId":282},
-            {"id":300,"gen":14,"name":"成士江","spouse":"朱从芬","parentId":282},
-            {"id":301,"gen":15,"name":"成连东","spouse":"李玉英","parentId":284},
-            {"id":302,"gen":15,"name":"成素芹","spouse":"","parentId":284},
-            {"id":303,"gen":15,"name":"成纪东","spouse":"王心爱","parentId":284},
-            {"id":304,"gen":15,"name":"成林东","spouse":"李桂花","parentId":284},
-            {"id":305,"gen":15,"name":"成海东","spouse":"韩祝芹","parentId":284},
-            {"id":306,"gen":15,"name":"成素东","spouse":"余茂香","parentId":285},
-            {"id":307,"gen":15,"name":"成素兰","spouse":"","parentId":285},
-            {"id":308,"gen":15,"name":"成素英","spouse":"","parentId":285},
-            {"id":309,"gen":15,"name":"成素青","spouse":"","parentId":285},
-            {"id":310,"gen":15,"name":"成素连","spouse":"","parentId":285},
-            {"id":311,"gen":15,"name":"成刘英","spouse":"","parentId":286},
-            {"id":312,"gen":15,"name":"成阳东","spouse":"厉梅","parentId":286},
-            {"id":313,"gen":15,"name":"成春东","spouse":"曹陸花","parentId":286},
-            {"id":314,"gen":15,"name":"成晓如","spouse":"","parentId":286},
-            {"id":315,"gen":15,"name":"成素红","spouse":"","parentId":288},
-            {"id":316,"gen":15,"name":"成素立","spouse":"徐燕","parentId":288},
-            {"id":317,"gen":15,"name":"成红萍","spouse":"","parentId":289},
-            {"id":318,"gen":15,"name":"成红梅","spouse":"","parentId":289},
-            {"id":319,"gen":15,"name":"成翠平","spouse":"","parentId":289},
-            {"id":320,"gen":15,"name":"成红英","spouse":"","parentId":289},
-            {"id":321,"gen":15,"name":"成红兰","spouse":"","parentId":289},
-            {"id":322,"gen":15,"name":"成红霞","spouse":"","parentId":289},
-            {"id":323,"gen":15,"name":"成如东","spouse":"朱彩霞","parentId":289},
-            {"id":324,"gen":15,"name":"成红芹","spouse":"","parentId":289},
-            {"id":325,"gen":15,"name":"成素梅","spouse":"","parentId":290},
-            {"id":326,"gen":15,"name":"成春梅","spouse":"","parentId":290},
-            {"id":327,"gen":15,"name":"成芹东","spouse":"孙华平","parentId":290},
-            {"id":328,"gen":15,"name":"成霞梅","spouse":"","parentId":290},
-            {"id":329,"gen":15,"name":"成亚东","spouse":"吴士梅","parentId":290},
-            {"id":330,"gen":15,"name":"成英伯","spouse":"","parentId":291},
-            {"id":331,"gen":15,"name":"成波","spouse":"朱从霞","parentId":291},
-            {"id":332,"gen":15,"name":"成涛","spouse":"李卫林","parentId":291},
-            {"id":333,"gen":15,"name":"成红","spouse":"","parentId":291},
-            {"id":334,"gen":15,"name":"成业","spouse":"","parentId":291},
-            {"id":335,"gen":15,"name":"成万东","spouse":"周利荣","parentId":292},
-            {"id":336,"gen":15,"name":"成永东","spouse":"孙孝敏","parentId":292},
-            {"id":337,"gen":15,"name":"成三山","spouse":"李灿灿","parentId":292},
-            {"id":338,"gen":15,"name":"成星月","spouse":"","parentId":295},
-            {"id":339,"gen":15,"name":"成星宜","spouse":"","parentId":296},
-            {"id":340,"gen":15,"name":"成荣萍","spouse":"","parentId":297},
-            {"id":341,"gen":15,"name":"成正东","spouse":"卢小妹","parentId":297},
-            {"id":342,"gen":15,"name":"成向东","spouse":"李红","parentId":297},
-            {"id":343,"gen":15,"name":"成红东","spouse":"朱冬云","parentId":297},
-            {"id":344,"gen":15,"name":"成岩","spouse":"王红英","parentId":297},
-            {"id":345,"gen":15,"name":"成齐东","spouse":"翁成娟","parentId":297},
-            {"id":346,"gen":15,"name":"成淮连","spouse":"沈风云","parentId":298},
-            {"id":347,"gen":15,"name":"成淮中","spouse":"周晓琴","parentId":298},
-            {"id":348,"gen":15,"name":"成梅萍","spouse":"","parentId":298},
-            {"id":349,"gen":15,"name":"成卫青","spouse":"","parentId":299},
-            {"id":350,"gen":15,"name":"成卫东","spouse":"于新萍","parentId":299},
-            {"id":351,"gen":15,"name":"成卫红","spouse":"","parentId":299},
-            {"id":352,"gen":15,"name":"成文静","spouse":"","parentId":300},
-            {"id":353,"gen":15,"name":"成新东","spouse":"左卫","parentId":300},
-            {"id":354,"gen":16,"name":"成红升","spouse":"吴红娟","parentId":301},
-            {"id":355,"gen":17,"name":"成妙颖","spouse":"","parentId":354},
-            {"id":356,"gen":16,"name":"成中顺","spouse":"孙翠银","parentId":301},
-            {"id":357,"gen":17,"name":"成璟","spouse":"","parentId":356},
-            {"id":358,"gen":17,"name":"成欣妍","spouse":"","parentId":356},
-            {"id":359,"gen":17,"name":"成浩然","spouse":"","parentId":356},
-            {"id":360,"gen":16,"name":"成艺","spouse":"","parentId":303},
-            {"id":361,"gen":16,"name":"成利静","spouse":"","parentId":303},
-            {"id":362,"gen":16,"name":"成娇荣","spouse":"","parentId":304},
-            {"id":363,"gen":16,"name":"成雅杰","spouse":"","parentId":304},
-            {"id":364,"gen":16,"name":"成梦琪","spouse":"","parentId":304},
-            {"id":365,"gen":16,"name":"成中良","spouse":"","parentId":304},
-            {"id":366,"gen":16,"name":"成骏驰","spouse":"","parentId":305},
-            {"id":367,"gen":16,"name":"成林","spouse":"","parentId":306},
-            {"id":368,"gen":16,"name":"成宝昌","spouse":"薛桂娟","parentId":306},
-            {"id":369,"gen":17,"name":"成家鋆","spouse":"","parentId":368},
-            {"id":370,"gen":17,"name":"成雪娇","spouse":"","parentId":368},
-            {"id":371,"gen":16,"name":"成相荣","spouse":"","parentId":312},
-            {"id":372,"gen":16,"name":"成寅鑫","spouse":"","parentId":312},
-            {"id":373,"gen":16,"name":"成寅栋","spouse":"","parentId":313},
-            {"id":374,"gen":16,"name":"成寅坤","spouse":"","parentId":313},
-            {"id":375,"gen":16,"name":"成振兴","spouse":"","parentId":316},
-            {"id":376,"gen":16,"name":"成中仁","spouse":"","parentId":323},
-            {"id":377,"gen":16,"name":"成双","spouse":"","parentId":323},
-            {"id":378,"gen":16,"name":"成媛媛","spouse":"","parentId":327},
-            {"id":379,"gen":16,"name":"成青元","spouse":"","parentId":327},
-            {"id":380,"gen":16,"name":"成中元","spouse":"","parentId":327},
-            {"id":381,"gen":16,"name":"成中宝","spouse":"","parentId":329},
-            {"id":382,"gen":16,"name":"成继兰","spouse":"","parentId":329},
-            {"id":383,"gen":16,"name":"成雨生","spouse":"","parentId":331},
-            {"id":384,"gen":16,"name":"成维鑫","spouse":"","parentId":331},
-            {"id":385,"gen":16,"name":"成梦丹","spouse":"","parentId":332},
-            {"id":386,"gen":16,"name":"成梦新","spouse":"","parentId":332},
-            {"id":387,"gen":16,"name":"成梦晴","spouse":"","parentId":335},
-            {"id":388,"gen":16,"name":"成中州","spouse":"","parentId":335},
-            {"id":389,"gen":16,"name":"成宇轩","spouse":"","parentId":336},
-            {"id":390,"gen":16,"name":"成宇安","spouse":"","parentId":337},
-            {"id":391,"gen":16,"name":"成硕源","spouse":"邵优贝尔","parentId":341},
-            {"id":392,"gen":17,"name":"成可","spouse":"","parentId":391},
-            {"id":393,"gen":16,"name":"成昊","spouse":"左玥","parentId":342},
-            {"id":394,"gen":17,"name":"成炳学","spouse":"","parentId":393},
-            {"id":395,"gen":16,"name":"成菲菲","spouse":"","parentId":343},
-            {"id":396,"gen":16,"name":"成好","spouse":"","parentId":344},
-            {"id":397,"gen":16,"name":"成晓","spouse":"","parentId":345},
-            {"id":398,"gen":16,"name":"成梦媱","spouse":"","parentId":345},
-            {"id":399,"gen":16,"name":"成淼","spouse":"","parentId":346},
-            {"id":400,"gen":16,"name":"成露","spouse":"","parentId":347},
-            {"id":401,"gen":16,"name":"成涵宇","spouse":"","parentId":350},
-            {"id":402,"gen":16,"name":"成天宇","spouse":"","parentId":353},
-            {"id":403,"gen":16,"name":"成浩宇","spouse":"","parentId":353},
-            {"id":404,"gen":11,"name":"成金钱","spouse":"邵氏","parentId":50},
-            {"id":405,"gen":12,"name":"成玉贡","spouse":"姜氏","parentId":404},
-            {"id":406,"gen":12,"name":"成玉举","spouse":"","parentId":404},
-            {"id":407,"gen":13,"name":"成廷能","spouse":"苏中美","parentId":405},
-            {"id":408,"gen":13,"name":"成廷丰","spouse":"","parentId":405},
-            {"id":409,"gen":14,"name":"成士金","spouse":"井红英","parentId":407},
-            {"id":410,"gen":14,"name":"成士银","spouse":"杨希梅","parentId":407},
-            {"id":411,"gen":15,"name":"成艳","spouse":"","parentId":410},
-            {"id":412,"gen":15,"name":"成晓丽","spouse":"","parentId":409},
-            {"id":413,"gen":15,"name":"成丽娟","spouse":"","parentId":409},
-            {"id":414,"gen":15,"name":"成寒东","spouse":"张雪梅","parentId":409},
-            {"id":415,"gen":15,"name":"成佳德","spouse":"郭颖颀","parentId":410},
-            {"id":416,"gen":16,"name":"成静怡","spouse":"","parentId":414},
-            {"id":417,"gen":16,"name":"成恩","spouse":"","parentId":414},
-            {"id":418,"gen":11,"name":"成金华","spouse":"樊氏","parentId":50},
-            {"id":419,"gen":11,"name":"成金鑫","spouse":"蒋氏/潘氏","parentId":51},
-            {"id":420,"gen":12,"name":"成玉忠","spouse":"黄氏","parentId":419},
-            {"id":421,"gen":12,"name":"成玉郎","spouse":"张氏","parentId":419},
-            {"id":422,"gen":13,"name":"成廷相","spouse":"左氏","parentId":421},
-            {"id":423,"gen":14,"name":"成士洪","spouse":"叶美玉","parentId":422},
-            {"id":424,"gen":15,"name":"成海平","spouse":"","parentId":423},
-            {"id":425,"gen":15,"name":"成海梅","spouse":"","parentId":423},
-            {"id":426,"gen":15,"name":"成文东","spouse":"王平","parentId":423},
-            {"id":427,"gen":15,"name":"成海英","spouse":"","parentId":423},
-            {"id":428,"gen":15,"name":"成海兰","spouse":"","parentId":423},
-            {"id":429,"gen":16,"name":"成中怀","spouse":"陈艳","parentId":426},
-            {"id":430,"gen":17,"name":"成辰","spouse":"","parentId":429},
-            {"id":431,"gen":17,"name":"成一一","spouse":"","parentId":429},
-            {"id":432,"gen":16,"name":"成中玉","spouse":"杨静洁","parentId":426},
-            {"id":433,"gen":11,"name":"成金锟","spouse":"余氏","parentId":54},
-            {"id":434,"gen":11,"name":"成金鹏","spouse":"皇甫氏","parentId":54},
-            {"id":435,"gen":12,"name":"成玉恒","spouse":"左氏","parentId":434},
-            {"id":436,"gen":12,"name":"成玉㤚","spouse":"朱氏","parentId":434},
-            {"id":437,"gen":12,"name":"成玉恮","spouse":"王氏","parentId":434},
-            {"id":438,"gen":12,"name":"成玉情","spouse":"葛氏","parentId":434},
-            {"id":439,"gen":13,"name":"成廷兵","spouse":"余彩云","parentId":435},
-            {"id":440,"gen":13,"name":"成廷高","spouse":"刘氏","parentId":435},
-            {"id":441,"gen":13,"name":"成祝华","spouse":"李华萍","parentId":436},
-            {"id":442,"gen":13,"name":"成廷文","spouse":"","parentId":436},
-            {"id":443,"gen":13,"name":"成祝梅","spouse":"","parentId":436},
-            {"id":444,"gen":13,"name":"成廷礼","spouse":"吕月山","parentId":436},
-            {"id":445,"gen":13,"name":"成廷志","spouse":"何桂兰","parentId":436},
-            {"id":446,"gen":13,"name":"成祝明","spouse":"","parentId":436},
-            {"id":447,"gen":13,"name":"成廷山","spouse":"朱传芳","parentId":437},
-            {"id":448,"gen":13,"name":"成廷洪","spouse":"方华平","parentId":438},
-            {"id":449,"gen":14,"name":"成士松","spouse":"金玉珍","parentId":439},
-            {"id":450,"gen":14,"name":"成士凯","spouse":"李文君","parentId":439},
-            {"id":451,"gen":14,"name":"成士桂","spouse":"余海珍","parentId":440},
-            {"id":452,"gen":14,"name":"成士淼","spouse":"詹玉荣","parentId":440},
-            {"id":453,"gen":14,"name":"成云峰","spouse":"嵇玉白","parentId":442},
-            {"id":454,"gen":14,"name":"成士丰","spouse":"陈兰珍","parentId":442},
-            {"id":455,"gen":14,"name":"成中华","spouse":"杨天美/杨天芹","parentId":444},
-            {"id":456,"gen":14,"name":"成荣华","spouse":"朱翠英","parentId":445},
-            {"id":457,"gen":14,"name":"成月华","spouse":"陈玉晓","parentId":445},
-            {"id":458,"gen":14,"name":"成月红","spouse":"","parentId":445},
-            {"id":459,"gen":14,"name":"成年华","spouse":"朱年红","parentId":445},
-            {"id":460,"gen":14,"name":"成明华","spouse":"吴红桂","parentId":445},
-            {"id":461,"gen":14,"name":"成兰","spouse":"","parentId":447},
-            {"id":462,"gen":14,"name":"成业华","spouse":"许桂梅","parentId":447},
-            {"id":463,"gen":14,"name":"成爱华","spouse":"姜明红","parentId":447},
-            {"id":464,"gen":14,"name":"成二兰","spouse":"","parentId":447},
-            {"id":465,"gen":14,"name":"成春平","spouse":"","parentId":448},
-            {"id":466,"gen":14,"name":"成二平","spouse":"","parentId":448},
-            {"id":467,"gen":14,"name":"成春霞","spouse":"","parentId":448},
-            {"id":468,"gen":14,"name":"成青华","spouse":"朱利平","parentId":448},
-            {"id":469,"gen":15,"name":"成淮东","spouse":"","parentId":449},
-            {"id":470,"gen":15,"name":"成二东","spouse":"","parentId":449},
-            {"id":471,"gen":15,"name":"成三东","spouse":"","parentId":449},
-            {"id":472,"gen":15,"name":"成沭平","spouse":"","parentId":449},
-            {"id":473,"gen":15,"name":"成海英","spouse":"","parentId":450},
-            {"id":474,"gen":15,"name":"成朝阳","spouse":"罗晓芳","parentId":450},
-            {"id":475,"gen":15,"name":"成光远","spouse":"张凯","parentId":450},
-            {"id":476,"gen":15,"name":"成海艳","spouse":"","parentId":450},
-            {"id":477,"gen":15,"name":"成兰东","spouse":"何桂梅","parentId":451},
-            {"id":478,"gen":15,"name":"成兰芹","spouse":"","parentId":451},
-            {"id":479,"gen":15,"name":"成苗东","spouse":"刘文珍","parentId":451},
-            {"id":480,"gen":15,"name":"成余东","spouse":"夏晓平","parentId":451},
-            {"id":481,"gen":15,"name":"成桥东","spouse":"","parentId":452},
-            {"id":482,"gen":15,"name":"成跃东","spouse":"戴林","parentId":452},
-            {"id":483,"gen":15,"name":"成建飞","spouse":"严丽","parentId":453},
-            {"id":484,"gen":15,"name":"成菁云","spouse":"","parentId":454},
-            {"id":485,"gen":15,"name":"成娟","spouse":"","parentId":454},
-            {"id":486,"gen":15,"name":"成闯","spouse":"","parentId":454},
-            {"id":487,"gen":15,"name":"成海霞","spouse":"","parentId":455},
-            {"id":488,"gen":15,"name":"成青霞","spouse":"","parentId":455},
-            {"id":489,"gen":15,"name":"成建祥","spouse":"施月红","parentId":455},
-            {"id":490,"gen":15,"name":"成建海","spouse":"许耀玲","parentId":456},
-            {"id":491,"gen":15,"name":"成建松","spouse":"谢芳","parentId":456},
-            {"id":492,"gen":15,"name":"成盼盼","spouse":"","parentId":457},
-            {"id":493,"gen":15,"name":"成丹艳","spouse":"","parentId":457},
-            {"id":494,"gen":15,"name":"成珠","spouse":"","parentId":459},
-            {"id":495,"gen":15,"name":"成健康","spouse":"","parentId":460},
-            {"id":496,"gen":15,"name":"成坚如","spouse":"","parentId":460},
-            {"id":497,"gen":15,"name":"成建虎","spouse":"张玉鉴","parentId":462},
-            {"id":498,"gen":15,"name":"成建彪","spouse":"葛彩芹","parentId":462},
-            {"id":499,"gen":15,"name":"成建豹","spouse":"吴云","parentId":463},
-            {"id":500,"gen":15,"name":"成迎迎","spouse":"","parentId":463},
-            {"id":501,"gen":15,"name":"成娇","spouse":"","parentId":468},
-            {"id":502,"gen":15,"name":"成城","spouse":"","parentId":468},
-            {"id":503,"gen":16,"name":"成康","spouse":"","parentId":474},
-            {"id":504,"gen":16,"name":"成果","spouse":"","parentId":474},
-            {"id":505,"gen":16,"name":"成徽","spouse":"","parentId":475},
-            {"id":506,"gen":16,"name":"成婍睿","spouse":"","parentId":475},
-            {"id":507,"gen":16,"name":"成伟伟","spouse":"祝霞霞","parentId":477},
-            {"id":508,"gen":17,"name":"成禹安","spouse":"","parentId":507},
-            {"id":509,"gen":17,"name":"成禹百","spouse":"","parentId":507},
-            {"id":510,"gen":16,"name":"成静","spouse":"","parentId":479},
-            {"id":511,"gen":16,"name":"成雨怡","spouse":"","parentId":479},
-            {"id":512,"gen":16,"name":"成丰","spouse":"","parentId":480},
-            {"id":513,"gen":16,"name":"成欣恩","spouse":"","parentId":482},
-            {"id":514,"gen":16,"name":"成欣怡","spouse":"","parentId":482},
-            {"id":515,"gen":16,"name":"成异同","spouse":"","parentId":489},
-            {"id":516,"gen":16,"name":"成悟然","spouse":"","parentId":489},
-            {"id":517,"gen":16,"name":"成晓雪","spouse":"","parentId":490},
-            {"id":518,"gen":16,"name":"成宇浩","spouse":"","parentId":490},
-            {"id":519,"gen":16,"name":"成宇翔","spouse":"","parentId":491},
-            {"id":520,"gen":16,"name":"成宇恒","spouse":"","parentId":491},
-            {"id":521,"gen":16,"name":"成雯筠","spouse":"","parentId":497},
-            {"id":522,"gen":16,"name":"成岳封","spouse":"","parentId":497},
-            {"id":523,"gen":16,"name":"成泽瑞","spouse":"","parentId":498},
-            {"id":524,"gen":16,"name":"成沐雪","spouse":"","parentId":498},
-            {"id":525,"gen":16,"name":"成坷屿","spouse":"","parentId":499},
-            {"id":526,"gen":11,"name":"成金铨","spouse":"赵氏","parentId":55},
-            {"id":527,"gen":11,"name":"成金銮","spouse":"余张氏","parentId":56},
-            {"id":528,"gen":12,"name":"成玉萤","spouse":"王氏","parentId":527},
-            {"id":529,"gen":12,"name":"成玉珊","spouse":"胡氏","parentId":527},
-            {"id":530,"gen":12,"name":"成玉湖","spouse":"潘献英/叶氏","parentId":527},
-            {"id":531,"gen":13,"name":"成廷生","spouse":"房得荣","parentId":528},
-            {"id":532,"gen":13,"name":"成廷动","spouse":"刘士兰","parentId":528},
-            {"id":533,"gen":13,"name":"成廷富","spouse":"刘珍兰","parentId":529},
-            {"id":534,"gen":13,"name":"成廷荣","spouse":"沈兰英","parentId":529},
-            {"id":535,"gen":13,"name":"成廷友","spouse":"杨桂华","parentId":530},
-            {"id":536,"gen":13,"name":"成晟","spouse":"樊孝梅","parentId":530},
-            {"id":537,"gen":13,"name":"成杰","spouse":"","parentId":530},
-            {"id":538,"gen":13,"name":"成庭凯","spouse":"","parentId":530},
-            {"id":539,"gen":14,"name":"成文峰","spouse":"","parentId":531},
-            {"id":540,"gen":14,"name":"成锋","spouse":"","parentId":532},
-            {"id":541,"gen":14,"name":"成士雨","spouse":"王正平","parentId":533},
-            {"id":542,"gen":14,"name":"成广","spouse":"刘氏","parentId":533},
-            {"id":543,"gen":14,"name":"成东","spouse":"","parentId":533},
-            {"id":544,"gen":14,"name":"成颖","spouse":"张晓青","parentId":534},
-            {"id":545,"gen":14,"name":"成瑾","spouse":"","parentId":534},
-            {"id":546,"gen":14,"name":"成美玲","spouse":"","parentId":535},
-            {"id":547,"gen":14,"name":"成云飞","spouse":"何小平","parentId":535},
-            {"id":548,"gen":14,"name":"成万里","spouse":"汪守玉","parentId":535},
-            {"id":549,"gen":14,"name":"成青玲","spouse":"","parentId":535},
-            {"id":550,"gen":14,"name":"成春宇","spouse":"郭安英","parentId":536},
-            {"id":551,"gen":14,"name":"成海燕","spouse":"","parentId":536},
-            {"id":552,"gen":15,"name":"成青","spouse":"","parentId":541},
-            {"id":553,"gen":15,"name":"成松","spouse":"王氏","parentId":541},
-            {"id":554,"gen":15,"name":"成笑笑","spouse":"","parentId":542},
-            {"id":555,"gen":15,"name":"成彧欣","spouse":"","parentId":544},
-            {"id":556,"gen":15,"name":"成小金","spouse":"","parentId":547},
-            {"id":557,"gen":15,"name":"成二金","spouse":"","parentId":547},
-            {"id":558,"gen":15,"name":"成岩东","spouse":"石贤","parentId":547},
-            {"id":559,"gen":15,"name":"成刚","spouse":"殷玉凤","parentId":548},
-            {"id":560,"gen":15,"name":"成慧","spouse":"","parentId":548},
-            {"id":561,"gen":15,"name":"成烨","spouse":"","parentId":550},
-            {"id":562,"gen":16,"name":"成雅萱","spouse":"","parentId":553},
-            {"id":563,"gen":16,"name":"成芷洋","spouse":"","parentId":553},
-            {"id":564,"gen":16,"name":"成欣怡","spouse":"","parentId":558},
-            {"id":565,"gen":16,"name":"成子豪","spouse":"","parentId":558},
-            {"id":566,"gen":16,"name":"成安琪","spouse":"","parentId":559},
-            {"id":567,"gen":16,"name":"成梓琪","spouse":"","parentId":559},
-            {"id":568,"gen":11,"name":"成金锡","spouse":"王氏","parentId":56},
-            {"id":569,"gen":12,"name":"成玉德","spouse":"尤氏","parentId":568},
-            {"id":570,"gen":13,"name":"成廷美","spouse":"","parentId":569},
-            {"id":571,"gen":11,"name":"成金镕","spouse":"左氏","parentId":56},
-            {"id":572,"gen":11,"name":"成金锜","spouse":"王氏","parentId":56},
-            {"id":573,"gen":12,"name":"成玉清","spouse":"朱氏","parentId":572},
-            {"id":574,"gen":12,"name":"成玉汉","spouse":"朱氏","parentId":572},
-            {"id":575,"gen":12,"name":"成玉波","spouse":"丁氏","parentId":572},
-            {"id":576,"gen":12,"name":"成玉珏","spouse":"","parentId":572},
-            {"id":577,"gen":12,"name":"成玉浴","spouse":"吴氏","parentId":572},
-            {"id":578,"gen":13,"name":"成廷方","spouse":"仲兆英","parentId":573},
-            {"id":579,"gen":13,"name":"成廷贤","spouse":"朱从兰/左氏","parentId":574},
-            {"id":580,"gen":13,"name":"成廷胜","spouse":"沈祝芳","parentId":574},
-            {"id":581,"gen":13,"name":"成廷余","spouse":"潘华","parentId":574},
-            {"id":582,"gen":13,"name":"成廷仁","spouse":"","parentId":574},
-            {"id":583,"gen":13,"name":"成廷安","spouse":"葛志平","parentId":575},
-            {"id":584,"gen":14,"name":"成桂兰","spouse":"","parentId":578},
-            {"id":585,"gen":14,"name":"成士文","spouse":"孙志兰","parentId":578},
-            {"id":586,"gen":14,"name":"成桂群","spouse":"","parentId":578},
-            {"id":587,"gen":14,"name":"成云霞","spouse":"","parentId":578},
-            {"id":588,"gen":14,"name":"成士如","spouse":"顾氏","parentId":578},
-            {"id":589,"gen":14,"name":"成士会","spouse":"","parentId":579},
-            {"id":590,"gen":14,"name":"成大华","spouse":"马巧兰","parentId":579},
-            {"id":591,"gen":14,"name":"成大林","spouse":"陈小惠","parentId":579},
-            {"id":592,"gen":14,"name":"成士国","spouse":"王海兰","parentId":580},
-            {"id":593,"gen":14,"name":"成建华","spouse":"","parentId":580},
-            {"id":594,"gen":14,"name":"成月兰","spouse":"","parentId":580},
-            {"id":595,"gen":14,"name":"成士庆","spouse":"葛志英","parentId":580},
-            {"id":596,"gen":14,"name":"成桂香","spouse":"","parentId":580},
-            {"id":597,"gen":14,"name":"成曙光","spouse":"秦基阳","parentId":581},
-            {"id":598,"gen":14,"name":"成曙霞","spouse":"潘汉华","parentId":581},
-            {"id":599,"gen":14,"name":"成广","spouse":"范周平","parentId":581},
-            {"id":600,"gen":14,"name":"成银华","spouse":"刘素霞","parentId":583},
-            {"id":601,"gen":14,"name":"成保华","spouse":"李秀丽","parentId":583},
-            {"id":602,"gen":14,"name":"成士刚","spouse":"","parentId":583},
-            {"id":603,"gen":15,"name":"成茂东","spouse":"","parentId":585},
-            {"id":604,"gen":15,"name":"成江东","spouse":"","parentId":588},
-            {"id":605,"gen":15,"name":"成建新","spouse":"","parentId":591},
-            {"id":606,"gen":15,"name":"成方","spouse":"嵇友海","parentId":592},
-            {"id":607,"gen":15,"name":"成静","spouse":"","parentId":592},
-            {"id":608,"gen":15,"name":"成远","spouse":"","parentId":592},
-            {"id":609,"gen":15,"name":"成红艳","spouse":"","parentId":595},
-            {"id":610,"gen":15,"name":"成红娟","spouse":"","parentId":595},
-            {"id":611,"gen":15,"name":"成来东","spouse":"孔令静","parentId":595},
-            {"id":612,"gen":15,"name":"成全","spouse":"","parentId":599},
-            {"id":613,"gen":15,"name":"成怀梅","spouse":"","parentId":600},
-            {"id":614,"gen":15,"name":"成闯东","spouse":"李广艳","parentId":600},
-            {"id":615,"gen":15,"name":"成慧","spouse":"","parentId":601},
-            {"id":616,"gen":15,"name":"成东鑫","spouse":"","parentId":601},
-            {"id":617,"gen":16,"name":"成兰兰","spouse":"","parentId":606},
-            {"id":618,"gen":16,"name":"成沙沙","spouse":"","parentId":606},
-            {"id":619,"gen":16,"name":"成嵇","spouse":"","parentId":606},
-            {"id":620,"gen":16,"name":"成欣蕊","spouse":"","parentId":611},
-            {"id":621,"gen":16,"name":"成筱祺","spouse":"","parentId":611},
-            {"id":622,"gen":16,"name":"成涛","spouse":"","parentId":614},
-            {"id":623,"gen":16,"name":"成鸿","spouse":"","parentId":614},
-            {"id":624,"gen":11,"name":"成金钺","spouse":"朱氏","parentId":57},
-            {"id":625,"gen":11,"name":"成金兰","spouse":"左氏","parentId":57},
-            {"id":626,"gen":11,"name":"成金声","spouse":"朱氏","parentId":57},
-            {"id":627,"gen":11,"name":"成金育","spouse":"钱氏","parentId":58},
-            {"id":628,"gen":11,"name":"成金祥","spouse":"潘氏","parentId":58},
-            {"id":629,"gen":12,"name":"成玉尧","spouse":"","parentId":628},
-            {"id":630,"gen":11,"name":"成金宝","spouse":"孙氏","parentId":60},
-            {"id":631,"gen":12,"name":"成玉湘","spouse":"张氏","parentId":630},
-            {"id":632,"gen":12,"name":"成玉勋","spouse":"尹氏","parentId":630},
-            {"id":633,"gen":13,"name":"成廷甫","spouse":"罗运珍","parentId":631},
-            {"id":634,"gen":13,"name":"成廷银","spouse":"朱清云","parentId":631},
-            {"id":635,"gen":13,"name":"成廷轩","spouse":"张氏","parentId":632},
-            {"id":636,"gen":14,"name":"成士连","spouse":"程娟","parentId":633},
-            {"id":637,"gen":14,"name":"成兰珍","spouse":"","parentId":633},
-            {"id":638,"gen":14,"name":"成士千","spouse":"陈秀兰","parentId":633},
-            {"id":639,"gen":14,"name":"成士万","spouse":"陈兆玉","parentId":633},
-            {"id":640,"gen":14,"name":"成士美","spouse":"","parentId":634},
-            {"id":641,"gen":14,"name":"成士元","spouse":"左素香","parentId":634},
-            {"id":642,"gen":14,"name":"成萍","spouse":"","parentId":634},
-            {"id":643,"gen":14,"name":"成华","spouse":"","parentId":634},
-            {"id":644,"gen":14,"name":"成士义","spouse":"朱桂芳","parentId":634},
-            {"id":645,"gen":14,"name":"成士兆","spouse":"潘子连","parentId":634},
-            {"id":646,"gen":14,"name":"成士章","spouse":"刘守美","parentId":635},
-            {"id":647,"gen":14,"name":"成士平","spouse":"","parentId":635},
-            {"id":648,"gen":14,"name":"成士礼","spouse":"张如珍","parentId":635},
-            {"id":649,"gen":14,"name":"成美华","spouse":"","parentId":635},
-            {"id":650,"gen":14,"name":"成士珍","spouse":"","parentId":635},
-            {"id":651,"gen":15,"name":"成小冬","spouse":"嵇艳","parentId":636},
-            {"id":652,"gen":15,"name":"成小妹","spouse":"","parentId":636},
-            {"id":653,"gen":15,"name":"成素华","spouse":"","parentId":638},
-            {"id":654,"gen":15,"name":"成彩华","spouse":"","parentId":638},
-            {"id":655,"gen":15,"name":"成怀山","spouse":"周玉花","parentId":638},
-            {"id":656,"gen":15,"name":"成静","spouse":"","parentId":638},
-            {"id":657,"gen":15,"name":"成怀高","spouse":"何海艳","parentId":638},
-            {"id":658,"gen":15,"name":"成小盈","spouse":"","parentId":639},
-            {"id":659,"gen":15,"name":"成红梅","spouse":"","parentId":641},
-            {"id":660,"gen":15,"name":"成亚东","spouse":"陈绍芹","parentId":641},
-            {"id":661,"gen":15,"name":"成红霞","spouse":"","parentId":641},
-            {"id":662,"gen":15,"name":"成晓芹","spouse":"","parentId":641},
-            {"id":663,"gen":15,"name":"成红柳","spouse":"","parentId":644},
-            {"id":664,"gen":15,"name":"成春柳","spouse":"","parentId":644},
-            {"id":665,"gen":15,"name":"成雪东","spouse":"王明梅","parentId":644},
-            {"id":666,"gen":15,"name":"成晓玲","spouse":"","parentId":645},
-            {"id":667,"gen":15,"name":"成晓青","spouse":"","parentId":645},
-            {"id":668,"gen":15,"name":"成晓艳","spouse":"","parentId":645},
-            {"id":669,"gen":15,"name":"成晓芳","spouse":"","parentId":645},
-            {"id":670,"gen":15,"name":"成建华","spouse":"徐海霞","parentId":646},
-            {"id":671,"gen":15,"name":"成建芳","spouse":"","parentId":646},
-            {"id":672,"gen":15,"name":"成建美","spouse":"","parentId":646},
-            {"id":673,"gen":15,"name":"成进东","spouse":"吴氏","parentId":646},
-            {"id":674,"gen":15,"name":"成海梅","spouse":"","parentId":648},
-            {"id":675,"gen":15,"name":"成海军","spouse":"尚春梅","parentId":648},
-            {"id":676,"gen":11,"name":"成金榜","spouse":"姜氏","parentId":60},
-            {"id":677,"gen":11,"name":"成金傲","spouse":"梁氏","parentId":60},
-            {"id":678,"gen":11,"name":"成金镀","spouse":"朱氏","parentId":61},
-            {"id":679,"gen":11,"name":"成金龙","spouse":"刘氏","parentId":62},
-            {"id":680,"gen":11,"name":"成金标","spouse":"孔氏","parentId":63},
-            {"id":681,"gen":11,"name":"成金铭","spouse":"","parentId":64},
-            {"id":682,"gen":11,"name":"成金锐","spouse":"洪氏","parentId":65},
-            {"id":683,"gen":12,"name":"成玉寿","spouse":"洪氏","parentId":682},
-            {"id":684,"gen":13,"name":"成廷模","spouse":"李玉莲","parentId":683},
-            {"id":685,"gen":13,"name":"成廷梅","spouse":"潘洪英","parentId":683},
-            {"id":686,"gen":13,"name":"成廷科","spouse":"余氏","parentId":683},
-            {"id":687,"gen":13,"name":"成廷桂","spouse":"曹玉珍","parentId":683},
-            {"id":688,"gen":14,"name":"成士亮","spouse":"孙井平","parentId":684},
-            {"id":689,"gen":14,"name":"成士玉","spouse":"张绍香","parentId":684},
-            {"id":690,"gen":14,"name":"成兰华","spouse":"叶怀俊","parentId":684},
-            {"id":691,"gen":14,"name":"成红","spouse":"","parentId":684},
-            {"id":692,"gen":14,"name":"成兰英","spouse":"","parentId":685},
-            {"id":693,"gen":14,"name":"成士怀","spouse":"潘玉美","parentId":685},
-            {"id":694,"gen":14,"name":"成兰芳","spouse":"","parentId":685},
-            {"id":695,"gen":14,"name":"成兰香","spouse":"","parentId":685},
-            {"id":696,"gen":14,"name":"成兰萍","spouse":"","parentId":685},
-            {"id":697,"gen":14,"name":"成士余","spouse":"郑义珍","parentId":686},
-            {"id":698,"gen":14,"name":"成士高","spouse":"王立凤","parentId":686},
-            {"id":699,"gen":14,"name":"成士宽","spouse":"高维凤","parentId":686},
-            {"id":700,"gen":14,"name":"成士宇","spouse":"王氏","parentId":686},
-            {"id":701,"gen":14,"name":"成美","spouse":"","parentId":686},
-            {"id":702,"gen":14,"name":"成士香","spouse":"","parentId":687},
-            {"id":703,"gen":14,"name":"成士云","spouse":"王立梅","parentId":687},
-            {"id":704,"gen":14,"name":"成士清","spouse":"罗会英","parentId":687},
-            {"id":705,"gen":14,"name":"成士祝","spouse":"朱秀华","parentId":687},
-            {"id":706,"gen":14,"name":"成士奎","spouse":"朱洪霞","parentId":687},
-            {"id":707,"gen":14,"name":"成士建","spouse":"汤秀英","parentId":687},
-            {"id":708,"gen":14,"name":"成爱萍","spouse":"","parentId":687},
-            {"id":709,"gen":15,"name":"成耀东","spouse":"刘兰霞","parentId":688},
-            {"id":710,"gen":15,"name":"成飞东","spouse":"","parentId":688},
-            {"id":711,"gen":15,"name":"成向阳","spouse":"唐云","parentId":688},
-            {"id":712,"gen":15,"name":"成春林","spouse":"卜","parentId":689},
-            {"id":713,"gen":15,"name":"成汉东","spouse":"朱锦荣","parentId":689},
-            {"id":714,"gen":15,"name":"成远东","spouse":"梁杰","parentId":689},
-            {"id":715,"gen":15,"name":"成永林","spouse":"","parentId":690},
-            {"id":716,"gen":15,"name":"成宝林","spouse":"","parentId":690},
-            {"id":717,"gen":15,"name":"成景林","spouse":"","parentId":690},
-            {"id":718,"gen":15,"name":"成满东","spouse":"赵霞","parentId":690},
-            {"id":719,"gen":15,"name":"成锦娟","spouse":"","parentId":693},
-            {"id":720,"gen":15,"name":"成银娟","spouse":"","parentId":693},
-            {"id":721,"gen":15,"name":"成丽娟","spouse":"","parentId":693},
-            {"id":722,"gen":15,"name":"成宝东","spouse":"叶秀鹏","parentId":693},
-            {"id":723,"gen":15,"name":"成东琳","spouse":"左言军","parentId":697},
-            {"id":724,"gen":15,"name":"成东海","spouse":"陈素珍","parentId":697},
-            {"id":725,"gen":15,"name":"成东生","spouse":"张敏琴","parentId":697},
-            {"id":726,"gen":15,"name":"成东霞","spouse":"李中华","parentId":697},
-            {"id":727,"gen":15,"name":"成东丰","spouse":"尤盼玉","parentId":697},
-            {"id":728,"gen":15,"name":"成华东","spouse":"刘长利","parentId":698},
-            {"id":729,"gen":15,"name":"成娟","spouse":"","parentId":698},
-            {"id":730,"gen":15,"name":"成东方","spouse":"","parentId":699},
-            {"id":731,"gen":15,"name":"成东春","spouse":"","parentId":699},
-            {"id":732,"gen":15,"name":"成柏林","spouse":"","parentId":703},
-            {"id":733,"gen":15,"name":"成柳林","spouse":"","parentId":703},
-            {"id":734,"gen":15,"name":"成松林","spouse":"","parentId":703},
-            {"id":735,"gen":15,"name":"成林","spouse":"","parentId":703},
-            {"id":736,"gen":15,"name":"成会东","spouse":"潘圆梅","parentId":703},
-            {"id":737,"gen":15,"name":"成小芬","spouse":"","parentId":704},
-            {"id":738,"gen":15,"name":"成艳","spouse":"","parentId":705},
-            {"id":739,"gen":15,"name":"成东","spouse":"吴秀红","parentId":705},
-            {"id":740,"gen":15,"name":"成磊","spouse":"马玲","parentId":706},
-            {"id":741,"gen":15,"name":"成颖","spouse":"","parentId":706},
-            {"id":742,"gen":15,"name":"成强","spouse":"龚春华","parentId":707},
-            {"id":743,"gen":15,"name":"成杰","spouse":"李睿佳","parentId":707},
-            {"id":744,"gen":11,"name":"成金纯","spouse":"","parentId":66},
-            {"id":745,"gen":11,"name":"成金有","spouse":"万氏","parentId":67},
-            {"id":746,"gen":12,"name":"成玉恕","spouse":"朱氏","parentId":745},
-            {"id":747,"gen":12,"name":"成玉恩","spouse":"朱氏","parentId":745},
-            {"id":748,"gen":13,"name":"成廷舜","spouse":"万翠兰","parentId":746},
-            {"id":749,"gen":13,"name":"成廷禹","spouse":"朱兰珍","parentId":746},
-            {"id":750,"gen":13,"name":"成廷周","spouse":"刘珍林","parentId":747},
-            {"id":751,"gen":13,"name":"成廷权","spouse":"周秀珍","parentId":747},
-            {"id":752,"gen":13,"name":"成廷根","spouse":"郑文英","parentId":747},
-            {"id":753,"gen":13,"name":"成廷本","spouse":"蒋菊英","parentId":747},
-            {"id":754,"gen":14,"name":"成士益","spouse":"童美芳","parentId":748},
-            {"id":755,"gen":14,"name":"成士爱","spouse":"单瑞华","parentId":748},
-            {"id":756,"gen":14,"name":"成月英","spouse":"","parentId":748},
-            {"id":757,"gen":14,"name":"成士英","spouse":"","parentId":749},
-            {"id":758,"gen":14,"name":"成士局","spouse":"刘敏学","parentId":749},
-            {"id":759,"gen":14,"name":"成菊英","spouse":"","parentId":749},
-            {"id":760,"gen":14,"name":"成士标","spouse":"田文梅","parentId":749},
-            {"id":761,"gen":14,"name":"成桃英","spouse":"","parentId":749},
-            {"id":762,"gen":14,"name":"成士进","spouse":"钱正云","parentId":749},
-            {"id":763,"gen":14,"name":"成中亚","spouse":"徐俊青","parentId":751},
-            {"id":764,"gen":14,"name":"成腊梅","spouse":"陈保平","parentId":751},
-            {"id":765,"gen":14,"name":"成建亚","spouse":"吴玉凤","parentId":751},
-            {"id":766,"gen":14,"name":"成丽清","spouse":"衡玉超","parentId":752},
-            {"id":767,"gen":14,"name":"成清平","spouse":"唐亚军","parentId":752},
-            {"id":768,"gen":14,"name":"成卫清","spouse":"张小年","parentId":752},
-            {"id":769,"gen":14,"name":"成会清","spouse":"支海林","parentId":752},
-            {"id":770,"gen":14,"name":"成洁","spouse":"朱顶松","parentId":752},
-            {"id":771,"gen":14,"name":"成永亚","spouse":"马军玉","parentId":752},
-            {"id":772,"gen":14,"name":"成东梅","spouse":"","parentId":753},
-            {"id":773,"gen":14,"name":"成士勇","spouse":"郑林香","parentId":753},
-            {"id":774,"gen":14,"name":"成士猛","spouse":"费红艳","parentId":753},
-            {"id":775,"gen":15,"name":"成军","spouse":"孙芸","parentId":754},
-            {"id":776,"gen":15,"name":"成磊","spouse":"陈莉","parentId":755},
-            {"id":777,"gen":15,"name":"成晓敏","spouse":"","parentId":758},
-            {"id":778,"gen":15,"name":"成江宁","spouse":"","parentId":758},
-            {"id":779,"gen":15,"name":"成立","spouse":"戴曼","parentId":760},
-            {"id":780,"gen":15,"name":"成锐","spouse":"李立言","parentId":762},
-            {"id":781,"gen":15,"name":"成黎明","spouse":"石文婷","parentId":763},
-            {"id":782,"gen":15,"name":"成璐璐","spouse":"","parentId":763},
-            {"id":783,"gen":15,"name":"成彬彬","spouse":"蒋悦","parentId":765},
-            {"id":784,"gen":15,"name":"成浩岚","spouse":"","parentId":771},
-            {"id":785,"gen":15,"name":"成尚","spouse":"","parentId":773},
-            {"id":786,"gen":15,"name":"成雅芳","spouse":"","parentId":774},
-            {"id":787,"gen":15,"name":"成琪","spouse":"","parentId":774},
-            {"id":788,"gen":16,"name":"成大琪","spouse":"","parentId":651},
-            {"id":789,"gen":16,"name":"成煌","spouse":"","parentId":655},
-            {"id":790,"gen":16,"name":"成雯","spouse":"","parentId":657},
-            {"id":791,"gen":16,"name":"成霖","spouse":"","parentId":657},
-            {"id":792,"gen":16,"name":"成凯","spouse":"","parentId":660},
-            {"id":793,"gen":16,"name":"成龙","spouse":"","parentId":660},
-            {"id":794,"gen":16,"name":"成雨馨","spouse":"","parentId":665},
-            {"id":795,"gen":16,"name":"成亮亮","spouse":"吴娅萍","parentId":670},
-            {"id":796,"gen":17,"name":"成子涵","spouse":"","parentId":795},
-            {"id":797,"gen":16,"name":"成倩倩","spouse":"","parentId":673},
-            {"id":798,"gen":16,"name":"成中仁","spouse":"","parentId":675},
-            {"id":799,"gen":16,"name":"成佳鑫","spouse":"","parentId":675},
-            {"id":800,"gen":16,"name":"成晶晶","spouse":"","parentId":709},
-            {"id":801,"gen":16,"name":"成一帆","spouse":"","parentId":711},
-            {"id":802,"gen":16,"name":"成苏吉","spouse":"","parentId":713},
-            {"id":803,"gen":16,"name":"成宏扬杰","spouse":"","parentId":714},
-            {"id":804,"gen":16,"name":"成宇航","spouse":"","parentId":718},
-            {"id":805,"gen":16,"name":"成雨轩","spouse":"","parentId":722},
-            {"id":806,"gen":16,"name":"成雨欣","spouse":"","parentId":722},
-            {"id":807,"gen":16,"name":"成中瑞","spouse":"","parentId":724},
-            {"id":808,"gen":16,"name":"成梦𡟇","spouse":"","parentId":724},
-            {"id":809,"gen":16,"name":"成倩兰","spouse":"","parentId":725},
-            {"id":810,"gen":16,"name":"成晗","spouse":"","parentId":725},
-            {"id":811,"gen":16,"name":"成𡟇","spouse":"","parentId":727},
-            {"id":812,"gen":16,"name":"成奥","spouse":"","parentId":727},
-            {"id":813,"gen":16,"name":"成苗","spouse":"","parentId":728},
-            {"id":814,"gen":16,"name":"成啸","spouse":"","parentId":728},
-            {"id":815,"gen":16,"name":"成雨豪","spouse":"","parentId":730},
-            {"id":816,"gen":16,"name":"成悦","spouse":"","parentId":736},
-            {"id":817,"gen":16,"name":"成阳","spouse":"","parentId":736},
-            {"id":818,"gen":16,"name":"成奕潼","spouse":"","parentId":739},
-            {"id":819,"gen":16,"name":"成昕桐","spouse":"","parentId":740},
-            {"id":820,"gen":16,"name":"成昕妍","spouse":"","parentId":740},
-            {"id":821,"gen":16,"name":"成","spouse":"","parentId":742},
-            {"id":822,"gen":16,"name":"成诺","spouse":"","parentId":743},
-            {"id":823,"gen":16,"name":"成孙奇","spouse":"","parentId":775},
-            {"id":824,"gen":16,"name":"成陈","spouse":"","parentId":776},
-            {"id":825,"gen":16,"name":"成妙彤","spouse":"","parentId":779},
-            {"id":826,"gen":16,"name":"成彦洺","spouse":"","parentId":779},
-            {"id":827,"gen":16,"name":"成彦淇","spouse":"","parentId":779},
-            {"id":828,"gen":16,"name":"成青书","spouse":"","parentId":780},
-            {"id":829,"gen":16,"name":"成石","spouse":"","parentId":781},
-            {"id":830,"gen":16,"name":"成语","spouse":"","parentId":781},
-            {"id":831,"gen":16,"name":"成书礼","spouse":"","parentId":783},
-            {"id":832,"gen":11,"name":"成金梁","spouse":"","parentId":68},
-            {"id":833,"gen":11,"name":"成金石","spouse":"王氏","parentId":null},
-            {"id":834,"gen":12,"name":"成玉仪","spouse":"王氏","parentId":833},
-            {"id":835,"gen":11,"name":"成金树","spouse":"孙氏","parentId":null},
-            {"id":836,"gen":11,"name":"成金银","spouse":"","parentId":null},
-            {"id":837,"gen":12,"name":"成玉坤","spouse":"","parentId":836},
-            {"id":838,"gen":12,"name":"成玉钧","spouse":"潘氏","parentId":836},
-            {"id":839,"gen":13,"name":"成廷志","spouse":"皇甫氏","parentId":838},
-            {"id":840,"gen":14,"name":"成士俊","spouse":"赵丽华","parentId":839},
-            {"id":841,"gen":14,"name":"成士华","spouse":"郑梅","parentId":839},
-            {"id":842,"gen":14,"name":"成士忠","spouse":"王达平","parentId":839},
-            {"id":843,"gen":15,"name":"成飞","spouse":"","parentId":840},
-            {"id":844,"gen":15,"name":"成雷","spouse":"","parentId":841},
-            {"id":845,"gen":15,"name":"成书瑶","spouse":"","parentId":241}
-        ];
+        // 格式: id|世次|姓名|配偶|父亲ID
+        const rawDataStr = `
+1|1|成桓|相氏|null
+2|2|成高楼||1
+3|2|成高发|相氏|1
+4|3|成有|王氏|3
+5|4|成青州|周氏|4
+6|4|成梁州|吉氏|4
+7|4|成豫州|郁氏|4
+8|5|成子君|姜氏|5
+9|5|成子和|郁氏|6
+10|5|成子久||7
+11|6|成维生|罗氏|8
+12|7|成景涛|皇甫氏|11
+13|7|成景淮|曹氏|11
+14|7|成景涵|皇甫氏|11
+15|8|成栋|吴氏|12
+16|8|成权|王氏|12
+17|8|成相|葛氏|12
+18|8|成桐|张氏|12
+19|8|成柱|王氏|13
+20|8|成楫|朱华氏|14
+21|8|成枹|王苏氏|14
+22|8|成檀|皇甫氏|14
+23|9|成兆显|陈氏|15
+24|9|成兆英|朱氏|16
+25|9|成履智|王氏|17
+26|9|成履仁|郑氏|18
+27|9|成履义|潘氏|18
+28|9|成履敬|皇甫氏|18
+29|9|成履信|胡氏|18
+30|9|成履祯|蒋氏|19
+31|9|成履祥|左氏|19
+32|9|成履顺|王氏|19
+33|9|成礼泰|徐氏|20
+34|9|成礼成|王氏|20
+35|9|成礼巽|左氏/华氏|20
+36|9|成礼萃|米氏|20
+37|9|成履谦|朱氏|21
+38|9|成礼丰|余氏/左氏|22
+39|9|成礼文|洪氏|22
+40|9|成礼豫|朱氏|22
+41|10|成璞|陈氏|23
+42|10|成錧|嵇氏|24
+43|10|成镯|沈氏|24
+44|10|成儒|王氏|25
+45|10|成玘|姜氏|26
+46|10|成台||29
+47|10|成珠||29
+48|10|成琪||29
+49|10|成曜|朱氏|30
+50|10|成昶|郑氏|30
+51|10|成早|蒋氏/潘氏|30
+52|10|成明||31
+53|10|成询||31
+54|10|成㫛|王氏|32
+55|10|成昉|赵氏|32
+56|10|成晧|吴氏|32
+57|10|成玺|费氏/陈氏/朱氏|33
+58|10|成珞|皇甫氏|35
+59|10|成𤤮|万氏|35
+60|10|成琏|朱氏|36
+61|10|成琇|徐氏|37
+62|10|成瑶|苏氏|37
+63|10|成珺|朱氏|38
+64|10|成珝|薛氏|38
+65|10|成瑜|朱氏|38
+66|10|成珃|皇甫氏|39
+67|10|成玿|洪氏|39
+68|10|成琳|徐氏|40
+69|6|成维德|胡氏|9
+70|7|成景源|郭氏|69
+71|8|成桡||70
+72|9|成礼振||71
+73|9|成礼坤||71
+74|10|成玖||72
+75|10|成琢||73
+76|11|成金林|徐氏|41
+77|12|成玉嶺|善氏|76
+78|13|成廷梧||77
+79|13|成廷超|邵氏|77
+80|13|成廷科|韩秀英|77
+81|13|成廷选|张兴兰|77
+82|14|成桂英||79
+83|14|成桂春||79
+84|14|成桂美||79
+85|14|成士伟|曹从兰|79
+86|14|成士付|袁美华|79
+87|14|成士法|朱兰英|80
+88|14|成士才|罗会云|81
+89|14|成士杰|蒋翠华|81
+90|14|成士平||81
+91|14|成士珠|朱顶梅|81
+92|14|成梅英||81
+93|15|成素珍||85
+94|15|成春勤||85
+95|15|成素红||85
+96|15|成素玲||85
+97|15|成云东|陈群|85
+98|15|成争||86
+99|15|成光|潘海亚|86
+100|15|成建||87
+101|15|成群|任玉银|87
+102|15|成宏||87
+103|15|成图||87
+104|15|成英|王金梅/赵双娥|87
+105|15|成聚||87
+106|15|成东洲|颜平平|88
+107|15|成荣梅||88
+108|15|成磊|张林|89
+109|15|成东剑|左广梅|91
+110|15|成倩||91
+111|16|成羽||97
+112|16|成中腾|梁玉|101
+113|17|成雨锐||112
+114|16|成继宗||104
+115|16|成中畅||104
+116|16|成中轩||106
+117|16|成轩移||106
+118|16|成于轩||108
+119|16|成佩佩||109
+120|16|成忠峻||109
+121|11|成金伦|徐氏|42
+122|12|成玉奎|朱氏|121
+123|12|成玉堦|张氏|121
+124|12|成玉恺|朱氏|121
+125|12|成玉？|吴氏|121
+126|13|成廷干|杨氏/陈氏|122
+127|13|成廷良|吴氏|122
+128|13|成廷万||123
+129|13|成廷元||123
+130|13|成廷玉||123
+131|13|成廷章|李氏|123
+132|14|成士道|高凤英|130
+133|14|成士友|王学珍|130
+134|14|成士昌|王玉兰|131
+135|14|成士隆||131
+136|15|成旭东|洪秀英|132
+137|15|成亚东|何玉珍|132
+138|15|成盛平||133
+139|15|成元东|夏国梅|133
+140|15|成宝东|任玉平|133
+141|15|成礼东||133
+142|15|成明东|王宝美|134
+143|15|成平东|谢义香|134
+144|15|成高东|刘月红|134
+145|15|成亮东|戴金云|134
+146|15|成美萍||134
+147|15|成丽萍||134
+148|16|成兵|吴宝梅|136
+149|16|成军|王绍涵|136
+150|17|成梦圆||149
+151|16|成月萍||136
+152|16|成萍||136
+153|16|成大勇||137
+154|17|成宇杭||153
+155|16|成海罗||137
+156|17|成晨||155
+157|16|成中峰|刘慧|139
+158|17|成梓涵||157
+159|17|成梓茹||157
+160|16|成中娟||139
+161|16|成中伟|郭赵娟|140
+162|17|成家凯||161
+163|17|成梓萱||161
+164|16|成中强|袁曹强|141
+165|17|成梓墨||164
+166|16|成中亚|许爱萍|142
+167|17|成宇洁||166
+168|17|成家燕||166
+169|16|成香||142
+170|16|成军|车殿霜|143
+171|17|成佳佳||170
+172|17|成家睿||170
+173|16|成健|徐雪梅/孙其芳|143
+174|17|成梓卓||173
+175|17|成晓玉||173
+176|16|成林|陈晓云|145
+177|17|成恩瑾||176
+178|16|成丹风||145
+179|11|成金镰|稽氏|43
+180|12|成玉坦|曹氏|179
+181|12|成玉培|姜氏|179
+182|13|成廷珍|刘氏|180
+183|13|成廷英|葛氏/朱氏|181
+184|13|成廷杰||181
+185|13|成廷柱|姜氏|181
+186|14|成士功||182
+187|14|成士桥|王氏|182
+188|14|成士俭|胡希梅|183
+189|14|成士龙|吴兰英|183
+190|14|成士虎|王素华|183
+191|14|成银生|陈玉兰|185
+192|14|成康|张巧云|185
+193|14|成军|唐海梅|185
+194|14|成列|朱海芹|185
+195|15|成一东|李红艳|187
+196|15|成二东|张梅|187
+197|15|成三东|赵永霞|187
+198|15|成耀东|王其林|188
+199|15|成华东|许学伟|188
+200|15|成平|文凌志|188
+201|15|成汉东|陈宝娟|188
+202|15|成卫东|孙霞|188
+203|15|成霞|葛家胜|188
+204|15|成晟盛||189
+205|15|成庆||189
+206|15|成继东|姚晓梅|190
+207|15|成海东|宋金风|190
+208|15|成东||191
+209|15|成叙||192
+210|15|成欢||193
+211|16|成雨||196
+212|16|成炳屹||198
+213|16|成栩||199
+214|16|成璐||201
+215|16|成哲||202
+216|16|成艺||202
+217|16|成晔轩||204
+218|16|成忠文|王志月|206
+219|16|成志桐||206
+220|16|成忠民||207
+221|16|成圣言||207
+222|11|成金洪|梁氏|44
+223|12|成玉田||222
+224|11|成金雪|秦氏|null
+225|12|成玉端|朱氏|224
+226|12|成玉宽|王氏/潘氏|224
+227|13|成廷秀|王银兰|225
+228|13|成廷和|赵桂英|226
+229|13|成廷利||226
+230|13|成竹萍||226
+231|13|成廷木|王素红|226
+232|13|成廷林|荀得清|226
+233|14|成士必|姚莉君|227
+234|14|成士顺|王红梅|227
+235|14|成士艳||227
+236|14|成士康|皇甫兰|228
+237|14|成跃|徐东亚|231
+238|14|成冲|蔡文珍|231
+239|14|成星星|朱艳|232
+240|14|成丹丹||232
+241|14|成星宇|陈怡|232
+242|15|成雨莹||233
+243|15|成雨蒙||233
+244|15|成轩|郭青|234
+245|15|成娜娜||234
+246|15|成芹||236
+247|15|成锐||236
+248|15|成凡凡||237
+249|15|成乐乐||237
+250|15|成敬铭||238
+251|15|成静雅||239
+252|15|成文雅||239
+253|15|成泽希||239
+254|16|成玥霖||244
+255|11|成金学|张氏|48
+256|12|成玉刚|胡维芳|255
+257|12|成玉章||255
+258|13|成秀萍||256
+259|13|成廷龙|费秀英|256
+260|13|成秀香||256
+261|13|成秀芳||256
+262|13|成廷虎|姜华林/刘智美/王孝芹|256
+263|13|成廷华|王桂华|256
+264|13|成秀梅||256
+265|14|成翠红||259
+266|14|成士军|董春梅|259
+267|14|成翠莲||262
+268|14|成引来|金闻娟|262
+269|14|成翠兰||262
+270|14|成士春|齐闻洁|263
+271|15|成宇轩||266
+272|15|成珺妍||268
+273|15|成毅||270
+274|11|成金镯|王氏|49
+275|12|成玉善|朱氏|274
+276|12|成玉凤|王氏|274
+277|12|成玉惠|梁氏|274
+278|12|成玉慈|朱氏|274
+279|13|成廷玺|朱氏|276
+280|13|成廷俊|朱氏|276
+281|13|成廷彩|朱？/朱从兰|277
+282|13|成廷彦|陈氏|278
+283|14|成桂英||279
+284|14|成士华|夏玉美|279
+285|14|成士中|徐珍美|279
+286|14|成士朋|黄兰英|279
+287|14|成彩云||279
+288|14|成云|朱霞英|279
+289|14|成士明|赵长美|280
+290|14|成士军|王秀英|280
+291|14|成士林|梁桂|281
+292|14|成飞|王素林|281
+293|14|成桂平||281
+294|14|成桂如||281
+295|14|成正|刘敏|281
+296|14|成小权|王桂琴|281
+297|14|成士洋|朱士芳|282
+298|14|成士海|杜玉珍|282
+299|14|成士河|戚桂莲|282
+300|14|成士江|朱从芬|282
+301|15|成连东|李玉英|284
+302|15|成素芹||284
+303|15|成纪东|王心爱|284
+304|15|成林东|李桂花|284
+305|15|成海东|韩祝芹|284
+306|15|成素东|余茂香|285
+307|15|成素兰||285
+308|15|成素英||285
+309|15|成素青||285
+310|15|成素连||285
+311|15|成刘英||286
+312|15|成阳东|厉梅|286
+313|15|成春东|曹陸花|286
+314|15|成晓如||286
+315|15|成素红||288
+316|15|成素立|徐燕|288
+317|15|成红萍||289
+318|15|成红梅||289
+319|15|成翠平||289
+320|15|成红英||289
+321|15|成红兰||289
+322|15|成红霞||289
+323|15|成如东|朱彩霞|289
+324|15|成红芹||289
+325|15|成素梅||290
+326|15|成春梅||290
+327|15|成芹东|孙华平|290
+328|15|成霞梅||290
+329|15|成亚东|吴士梅|290
+330|15|成英伯||291
+331|15|成波|朱从霞|291
+332|15|成涛|李卫林|291
+333|15|成红||291
+334|15|成业||291
+335|15|成万东|周利荣|292
+336|15|成永东|孙孝敏|292
+337|15|成三山|李灿灿|292
+338|15|成星月||295
+339|15|成星宜||296
+340|15|成荣萍||297
+341|15|成正东|卢小妹|297
+342|15|成向东|李红|297
+343|15|成红东|朱冬云|297
+344|15|成岩|王红英|297
+345|15|成齐东|翁成娟|297
+346|15|成淮连|沈风云|298
+347|15|成淮中|周晓琴|298
+348|15|成梅萍||298
+349|15|成卫青||299
+350|15|成卫东|于新萍|299
+351|15|成卫红||299
+352|15|成文静||300
+353|15|成新东|左卫|300
+354|16|成红升|吴红娟|301
+355|17|成妙颖||354
+356|16|成中顺|孙翠银|301
+357|17|成璟||356
+358|17|成欣妍||356
+359|17|成浩然||356
+360|16|成艺||303
+361|16|成利静||303
+362|16|成娇荣||304
+363|16|成雅杰||304
+364|16|成梦琪||304
+365|16|成中良||304
+366|16|成骏驰||305
+367|16|成林||306
+368|16|成宝昌|薛桂娟|306
+369|17|成家鋆||368
+370|17|成雪娇||368
+371|16|成相荣||312
+372|16|成寅鑫||312
+373|16|成寅栋||313
+374|16|成寅坤||313
+375|16|成振兴||316
+376|16|成中仁||323
+377|16|成双||323
+378|16|成媛媛||327
+379|16|成青元||327
+380|16|成中元||327
+381|16|成中宝||329
+382|16|成继兰||329
+383|16|成雨生||331
+384|16|成维鑫||331
+385|16|成梦丹||332
+386|16|成梦新||332
+387|16|成梦晴||335
+388|16|成中州||335
+389|16|成宇轩||336
+390|16|成宇安||337
+391|16|成硕源|邵优贝尔|341
+392|17|成可||391
+393|16|成昊|左玥|342
+394|17|成炳学||393
+395|16|成菲菲||343
+396|16|成好||344
+397|16|成晓||345
+398|16|成梦媱||345
+399|16|成淼||346
+400|16|成露||347
+401|16|成涵宇||350
+402|16|成天宇||353
+403|16|成浩宇||353
+404|11|成金钱|邵氏|50
+405|12|成玉贡|姜氏|404
+406|12|成玉举||404
+407|13|成廷能|苏中美|405
+408|13|成廷丰||405
+409|14|成士金|井红英|407
+410|14|成士银|杨希梅|407
+411|15|成艳||410
+412|15|成晓丽||409
+413|15|成丽娟||409
+414|15|成寒东|张雪梅|409
+415|15|成佳德|郭颖颀|410
+416|16|成静怡||414
+417|16|成恩||414
+418|11|成金华|樊氏|50
+419|11|成金鑫|蒋氏/潘氏|51
+420|12|成玉忠|黄氏|419
+421|12|成玉郎|张氏|419
+422|13|成廷相|左氏|421
+423|14|成士洪|叶美玉|422
+424|15|成海平||423
+425|15|成海梅||423
+426|15|成文东|王平|423
+427|15|成海英||423
+428|15|成海兰||423
+429|16|成中怀|陈艳|426
+430|17|成辰||429
+431|17|成一一||429
+432|16|成中玉|杨静洁|426
+433|11|成金锟|余氏|54
+434|11|成金鹏|皇甫氏|54
+435|12|成玉恒|左氏|434
+436|12|成玉㤚|朱氏|434
+437|12|成玉恮|王氏|434
+438|12|成玉情|葛氏|434
+439|13|成廷兵|余彩云|435
+440|13|成廷高|刘氏|435
+441|13|成祝华|李华萍|436
+442|13|成廷文||436
+443|13|成祝梅||436
+444|13|成廷礼|吕月山|436
+445|13|成廷志|何桂兰|436
+446|13|成祝明||436
+447|13|成廷山|朱传芳|437
+448|13|成廷洪|方华平|438
+449|14|成士松|金玉珍|439
+450|14|成士凯|李文君|439
+451|14|成士桂|余海珍|440
+452|14|成士淼|詹玉荣|440
+453|14|成云峰|嵇玉白|442
+454|14|成士丰|陈兰珍|442
+455|14|成中华|杨天美/杨天芹|444
+456|14|成荣华|朱翠英|445
+457|14|成月华|陈玉晓|445
+458|14|成月红||445
+459|14|成年华|朱年红|445
+460|14|成明华|吴红桂|445
+461|14|成兰||447
+462|14|成业华|许桂梅|447
+463|14|成爱华|姜明红|447
+464|14|成二兰||447
+465|14|成春平||448
+466|14|成二平||448
+467|14|成春霞||448
+468|14|成青华|朱利平|448
+469|15|成淮东||449
+470|15|成二东||449
+471|15|成三东||449
+472|15|成沭平||449
+473|15|成海英||450
+474|15|成朝阳|罗晓芳|450
+475|15|成光远|张凯|450
+476|15|成海艳||450
+477|15|成兰东|何桂梅|451
+478|15|成兰芹||451
+479|15|成苗东|刘文珍|451
+480|15|成余东|夏晓平|451
+481|15|成桥东||452
+482|15|成跃东|戴林|452
+483|15|成建飞|严丽|453
+484|15|成菁云||454
+485|15|成娟||454
+486|15|成闯||454
+487|15|成海霞||455
+488|15|成青霞||455
+489|15|成建祥|施月红|455
+490|15|成建海|许耀玲|456
+491|15|成建松|谢芳|456
+492|15|成盼盼||457
+493|15|成丹艳||457
+494|15|成珠||459
+495|15|成健康||460
+496|15|成坚如||460
+497|15|成建虎|张玉鉴|462
+498|15|成建彪|葛彩芹|462
+499|15|成建豹|吴云|463
+500|15|成迎迎||463
+501|15|成娇||468
+502|15|成城||468
+503|16|成康||474
+504|16|成果||474
+505|16|成徽||475
+506|16|成婍睿||475
+507|16|成伟伟|祝霞霞|477
+508|17|成禹安||507
+509|17|成禹百||507
+510|16|成静||479
+511|16|成雨怡||479
+512|16|成丰||480
+513|16|成欣恩||482
+514|16|成欣怡||482
+515|16|成异同||489
+516|16|成悟然||489
+517|16|成晓雪||490
+518|16|成宇浩||490
+519|16|成宇翔||491
+520|16|成宇恒||491
+521|16|成雯筠||497
+522|16|成岳封||497
+523|16|成泽瑞||498
+524|16|成沐雪||498
+525|16|成坷屿||499
+526|11|成金铨|赵氏|55
+527|11|成金銮|余张氏|56
+528|12|成玉萤|王氏|527
+529|12|成玉珊|胡氏|527
+530|12|成玉湖|潘献英/叶氏|527
+531|13|成廷生|房得荣|528
+532|13|成廷动|刘士兰|528
+533|13|成廷富|刘珍兰|529
+534|13|成廷荣|沈兰英|529
+535|13|成廷友|杨桂华|530
+536|13|成晟|樊孝梅|530
+537|13|成杰||530
+538|13|成庭凯||530
+539|14|成文峰||531
+540|14|成锋||532
+541|14|成士雨|王正平|533
+542|14|成广|刘氏|533
+543|14|成东||533
+544|14|成颖|张晓青|534
+545|14|成瑾||534
+546|14|成美玲||535
+547|14|成云飞|何小平|535
+548|14|成万里|汪守玉|535
+549|14|成青玲||535
+550|14|成春宇|郭安英|536
+551|14|成海燕||536
+552|15|成青||541
+553|15|成松|王氏|541
+554|15|成笑笑||542
+555|15|成彧欣||544
+556|15|成小金||547
+557|15|成二金||547
+558|15|成岩东|石贤|547
+559|15|成刚|殷玉凤|548
+560|15|成慧||548
+561|15|成烨||550
+562|16|成雅萱||553
+563|16|成芷洋||553
+564|16|成欣怡||558
+565|16|成子豪||558
+566|16|成安琪||559
+567|16|成梓琪||559
+568|11|成金锡|王氏|56
+569|12|成玉德|尤氏|568
+570|13|成廷美||569
+571|11|成金镕|左氏|56
+572|11|成金锜|王氏|56
+573|12|成玉清|朱氏|572
+574|12|成玉汉|朱氏|572
+575|12|成玉波|丁氏|572
+576|12|成玉珏||572
+577|12|成玉浴|吴氏|572
+578|13|成廷方|仲兆英|573
+579|13|成廷贤|朱从兰/左氏|574
+580|13|成廷胜|沈祝芳|574
+581|13|成廷余|潘华|574
+582|13|成廷仁||574
+583|13|成廷安|葛志平|575
+584|14|成桂兰||578
+585|14|成士文|孙志兰|578
+586|14|成桂群||578
+587|14|成云霞||578
+588|14|成士如|顾氏|578
+589|14|成士会||579
+590|14|成大华|马巧兰|579
+591|14|成大林|陈小惠|579
+592|14|成士国|王海兰|580
+593|14|成建华||580
+594|14|成月兰||580
+595|14|成士庆|葛志英|580
+596|14|成桂香||580
+597|14|成曙光|秦基阳|581
+598|14|成曙霞|潘汉华|581
+599|14|成广|范周平|581
+600|14|成银华|刘素霞|583
+601|14|成保华|李秀丽|583
+602|14|成士刚||583
+603|15|成茂东||585
+604|15|成江东||588
+605|15|成建新||591
+606|15|成方|嵇友海|592
+607|15|成静||592
+608|15|成远||592
+609|15|成红艳||595
+610|15|成红娟||595
+611|15|成来东|孔令静|595
+612|15|成全||599
+613|15|成怀梅||600
+614|15|成闯东|李广艳|600
+615|15|成慧||601
+616|15|成东鑫||601
+617|16|成兰兰||606
+618|16|成沙沙||606
+619|16|成嵇||606
+620|16|成欣蕊||611
+621|16|成筱祺||611
+622|16|成涛||614
+623|16|成鸿||614
+624|11|成金钺|朱氏|57
+625|11|成金兰|左氏|57
+626|11|成金声|朱氏|57
+627|11|成金育|钱氏|58
+628|11|成金祥|潘氏|58
+629|12|成玉尧||628
+630|11|成金宝|孙氏|60
+631|12|成玉湘|张氏|630
+632|12|成玉勋|尹氏|630
+633|13|成廷甫|罗运珍|631
+634|13|成廷银|朱清云|631
+635|13|成廷轩|张氏|632
+636|14|成士连|程娟|633
+637|14|成兰珍||633
+638|14|成士千|陈秀兰|633
+639|14|成士万|陈兆玉|633
+640|14|成士美||634
+641|14|成士元|左素香|634
+642|14|成萍||634
+643|14|成华||634
+644|14|成士义|朱桂芳|634
+645|14|成士兆|潘子连|634
+646|14|成士章|刘守美|635
+647|14|成士平||635
+648|14|成士礼|张如珍|635
+649|14|成美华||635
+650|14|成士珍||635
+651|15|成小冬|嵇艳|636
+652|15|成小妹||636
+653|15|成素华||638
+654|15|成彩华||638
+655|15|成怀山|周玉花|638
+656|15|成静||638
+657|15|成怀高|何海艳|638
+658|15|成小盈||639
+659|15|成红梅||641
+660|15|成亚东|陈绍芹|641
+661|15|成红霞||641
+662|15|成晓芹||641
+663|15|成红柳||644
+664|15|成春柳||644
+665|15|成雪东|王明梅|644
+666|15|成晓玲||645
+667|15|成晓青||645
+668|15|成晓艳||645
+669|15|成晓芳||645
+670|15|成建华|徐海霞|646
+671|15|成建芳||646
+672|15|成建美||646
+673|15|成进东|吴氏|646
+674|15|成海梅||648
+675|15|成海军|尚春梅|648
+676|11|成金榜|姜氏|60
+677|11|成金傲|梁氏|60
+678|11|成金镀|朱氏|61
+679|11|成金龙|刘氏|62
+680|11|成金标|孔氏|63
+681|11|成金铭||64
+682|11|成金锐|洪氏|65
+683|12|成玉寿|洪氏|682
+684|13|成廷模|李玉莲|683
+685|13|成廷梅|潘洪英|683
+686|13|成廷科|余氏|683
+687|13|成廷桂|曹玉珍|683
+688|14|成士亮|孙井平|684
+689|14|成士玉|张绍香|684
+690|14|成兰华|叶怀俊|684
+691|14|成红||684
+692|14|成兰英||685
+693|14|成士怀|潘玉美|685
+694|14|成兰芳||685
+695|14|成兰香||685
+696|14|成兰萍||685
+697|14|成士余|郑义珍|686
+698|14|成士高|王立凤|686
+699|14|成士宽|高维凤|686
+700|14|成士宇|王氏|686
+701|14|成美||686
+702|14|成士香||687
+703|14|成士云|王立梅|687
+704|14|成士清|罗会英|687
+705|14|成士祝|朱秀华|687
+706|14|成士奎|朱洪霞|687
+707|14|成士建|汤秀英|687
+708|14|成爱萍||687
+709|15|成耀东|刘兰霞|688
+710|15|成飞东||688
+711|15|成向阳|唐云|688
+712|15|成春林|卜|689
+713|15|成汉东|朱锦荣|689
+714|15|成远东|梁杰|689
+715|15|成永林||690
+716|15|成宝林||690
+717|15|成景林||690
+718|15|成满东|赵霞|690
+719|15|成锦娟||693
+720|15|成银娟||693
+721|15|成丽娟||693
+722|15|成宝东|叶秀鹏|693
+723|15|成东琳|左言军|697
+724|15|成东海|陈素珍|697
+725|15|成东生|张敏琴|697
+726|15|成东霞|李中华|697
+727|15|成东丰|尤盼玉|697
+728|15|成华东|刘长利|698
+729|15|成娟||698
+730|15|成东方||699
+731|15|成东春||699
+732|15|成柏林||703
+733|15|成柳林||703
+734|15|成松林||703
+735|15|成林||703
+736|15|成会东|潘圆梅|703
+737|15|成小芬||704
+738|15|成艳||705
+739|15|成东|吴秀红|705
+740|15|成磊|马玲|706
+741|15|成颖||706
+742|15|成强|龚春华|707
+743|15|成杰|李睿佳|707
+744|11|成金纯||66
+745|11|成金有|万氏|67
+746|12|成玉恕|朱氏|745
+747|12|成玉恩|朱氏|745
+748|13|成廷舜|万翠兰|746
+749|13|成廷禹|朱兰珍|746
+750|13|成廷周|刘珍林|747
+751|13|成廷权|周秀珍|747
+752|13|成廷根|郑文英|747
+753|13|成廷本|蒋菊英|747
+754|14|成士益|童美芳|748
+755|14|成士爱|单瑞华|748
+756|14|成月英||748
+757|14|成士英||749
+758|14|成士局|刘敏学|749
+759|14|成菊英||749
+760|14|成士标|田文梅|749
+761|14|成桃英||749
+762|14|成士进|钱正云|749
+763|14|成中亚|徐俊青|751
+764|14|成腊梅|陈保平|751
+765|14|成建亚|吴玉凤|751
+766|14|成丽清|衡玉超|752
+767|14|成清平|唐亚军|752
+768|14|成卫清|张小年|752
+769|14|成会清|支海林|752
+770|14|成洁|朱顶松|752
+771|14|成永亚|马军玉|752
+772|14|成东梅||753
+773|14|成士勇|郑林香|753
+774|14|成士猛|费红艳|753
+775|15|成军|孙芸|754
+776|15|成磊|陈莉|755
+777|15|成晓敏||758
+778|15|成江宁||758
+779|15|成立|戴曼|760
+780|15|成锐|李立言|762
+781|15|成黎明|石文婷|763
+782|15|成璐璐||763
+783|15|成彬彬|蒋悦|765
+784|15|成浩岚||771
+785|15|成尚||773
+786|15|成雅芳||774
+787|15|成琪||774
+788|16|成大琪||651
+789|16|成煌||655
+790|16|成雯||657
+791|16|成霖||657
+792|16|成凯||660
+793|16|成龙||660
+794|16|成雨馨||665
+795|16|成亮亮|吴娅萍|670
+796|17|成子涵||795
+797|16|成倩倩||673
+798|16|成中仁||675
+799|16|成佳鑫||675
+800|16|成晶晶||709
+801|16|成一帆||711
+802|16|成苏吉||713
+803|16|成宏扬杰||714
+804|16|成宇航||718
+805|16|成雨轩||722
+806|16|成雨欣||722
+807|16|成中瑞||724
+808|16|成梦𡟇||724
+809|16|成倩兰||725
+810|16|成晗||725
+811|16|成𡟇||727
+812|16|成奥||727
+813|16|成苗||728
+814|16|成啸||728
+815|16|成雨豪||730
+816|16|成悦||736
+817|16|成阳||736
+818|16|成奕潼||739
+819|16|成昕桐||740
+820|16|成昕妍||740
+821|16|成||742
+822|16|成诺||743
+823|16|成孙奇||775
+824|16|成陈||776
+825|16|成妙彤||779
+826|16|成彦洺||779
+827|16|成彦淇||779
+828|16|成青书||780
+829|16|成石||781
+830|16|成语||781
+831|16|成书礼||783
+832|11|成金梁||68
+833|11|成金石|王氏|null
+834|12|成玉仪|王氏|833
+835|11|成金树|孙氏|null
+836|11|成金银||null
+837|12|成玉坤||836
+838|12|成玉钧|潘氏|836
+839|13|成廷志|皇甫氏|838
+840|14|成士俊|赵丽华|839
+841|14|成士华|郑梅|839
+842|14|成士忠|王达平|839
+843|15|成飞||840
+844|15|成雷||841
+845|15|成书瑶||241
+        `;
 
-        let isRendered = false;
+        // ================= 渲染 ECharts 图表 =================
+        function renderChart() {
+            // 1. 解析文本数据
+            const rawData = rawDataStr.trim().split('\n').map(line => {
+                const parts = line.split('|');
+                return {
+                    id: parts[0],
+                    gen: parts[1],
+                    name: parts[2],
+                    spouse: parts[3],
+                    parentId: parts[4] === 'null' ? null : parts[4]
+                };
+            });
 
-        // ================= 构建与渲染树 =================
-        function renderTree() {
-            if (isRendered) return; // 防止重复渲染
-            
-            // 1. 将扁平数据转为 Map 提高查找效率，并初始化 children 数组
+            // 2. 建立 Map 和 树形结构
             const map = {};
             rawData.forEach(item => {
                 map[item.id] = { ...item, children: [] };
             });
 
-            // 2. 构建父子关系
             const rootNodes = [];
             rawData.forEach(item => {
                 const node = map[item.id];
                 if (item.parentId && map[item.parentId]) {
                     map[item.parentId].children.push(node);
                 } else {
-                    rootNodes.push(node); // 没有父亲或父亲不在数据里的，作为根节点
+                    rootNodes.push(node);
                 }
             });
 
-            // 3. 递归渲染 HTML (使用 details 标签实现折叠)
-            function buildHTML(node) {
-                // 整理显示的附加信息：配偶、世次
-                let extraInfo = "";
-                if (node.spouse) extraInfo += ` | 配偶: ${node.spouse}`;
+            // 3. 转换为 ECharts 需要的格式
+            function formatNode(node) {
+                // 名字加粗，配偶小字。通过富文本样式实现
+                let labelText = `{name|${node.name}}`;
+                if (node.spouse) {
+                    labelText += `\n{wife|${node.spouse}}`;
+                }
                 
-                const genBadge = `<span class="gen-badge">${node.gen}世</span>`;
-                const title = `${genBadge} <strong>${node.name}</strong> <span class="person-info">${extraInfo}</span>`;
+                const echartsNode = {
+                    name: labelText,
+                    children: [],
+                    // 存储原始数据供提示框使用
+                    rawData: node 
+                };
 
                 if (node.children.length > 0) {
-                    // 有子节点：使用 <details> 折叠
-                    let html = `<li><details><summary>${title}</summary><ul class="tree">`;
-                    // 按ID排序一下子节点，保证长幼有序
-                    node.children.sort((a, b) => a.id - b.id).forEach(child => {
-                        html += buildHTML(child);
-                    });
-                    html += `</ul></details></li>`;
-                    return html;
-                } else {
-                    // 没有子节点：普通叶子节点
-                    return `<li><span class="leaf-node">${title}</span></li>`;
+                    // 按ID排序子节点
+                    node.children.sort((a, b) => parseInt(a.id) - parseInt(b.id));
+                    echartsNode.children = node.children.map(formatNode);
                 }
+
+                return echartsNode;
             }
 
-            // 4. 生成最终 HTML 并插入页面
-            let finalHTML = '<ul class="tree root">';
-            // 按 ID 对根节点排序
-            rootNodes.sort((a, b) => a.id - b.id).forEach(root => {
-                finalHTML += buildHTML(root);
-            });
-            finalHTML += '</ul>';
+            // 构造 ECharts 数据树 (支持多个根节点)
+            const treeData = rootNodes.map(root => formatNode(root));
 
-            document.getElementById("tree-root").innerHTML = finalHTML;
-            isRendered = true;
+            // 4. 初始化 ECharts 实例
+            const chartDom = document.getElementById('main');
+            const myChart = echarts.init(chartDom);
+
+            // 5. 配置项
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    triggerOn: 'mousemove',
+                    formatter: function (params) {
+                        const data = params.data.rawData;
+                        let html = `<div style="font-family: inherit;">
+                            <b style="font-size: 16px; color: #333;">${data.name}</b> 
+                            <span style="font-size: 12px; background: #8b6c4a; color: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">${data.gen}世</span><br/>
+                            <span style="color: #666;">配偶: ${data.spouse || '无记录'}</span>
+                        </div>`;
+                        return html;
+                    }
+                },
+                series: [
+                    {
+                        type: 'tree',
+                        data: treeData,
+                        top: '5%',
+                        left: '5%',
+                        bottom: '5%',
+                        right: '5%',
+                        symbolSize: 8, // 节点圆圈大小
+                        // 布局方向：从上到下
+                        orient: 'TB', 
+                        // 默认展开的层级（只展开前两代，防止卡顿）
+                        initialTreeDepth: 2, 
+                        // 允许点击节点折叠
+                        expandAndCollapse: true,
+                        // 允许鼠标缩放和平移
+                        roam: true, 
+                        animationDurationUpdate: 750,
+                        
+                        // 标签样式（姓名和配偶）
+                        label: {
+                            position: 'top',
+                            distance: 10,
+                            align: 'center',
+                            verticalAlign: 'middle',
+                            fontSize: 14,
+                            rich: {
+                                name: {
+                                    fontWeight: 'bold',
+                                    color: '#333',
+                                    fontSize: 16,
+                                    lineHeight: 22
+                                },
+                                wife: {
+                                    fontSize: 12,
+                                    color: '#777',
+                                    lineHeight: 18
+                                }
+                            }
+                        },
+                        
+                        // 叶子节点的特殊处理 (叶子节点没有圆圈)
+                        leaves: {
+                            label: {
+                                position: 'bottom',
+                                verticalAlign: 'top',
+                                align: 'center'
+                            }
+                        },
+                        
+                        // 连线的样式
+                        lineStyle: {
+                            color: '#a4b1c2',
+                            width: 1.5,
+                            curveness: 0 // 0为直角折线，0.5为平滑曲线。截图是直角折线
+                        },
+                        
+                        // 节点圆点的样式
+                        itemStyle: {
+                            color: '#7a5c3d',
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        }
+                    }
+                ]
+            };
+
+            // 6. 渲染图表
+            myChart.setOption(option);
+
+            // 7. 窗口大小改变时自适应
+            window.addEventListener('resize', () => {
+                myChart.resize();
+            });
         }
     </script>
 </body>
