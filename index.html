@@ -3,26 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的网站</title> <!-- 标题名字没动，还是原来的 -->
+    <title>我的网站</title> <!-- 网页名字完全没动 -->
     <style>
+        /* 页面背景和居中设置 */
         body { 
-            background-color: #000; 
+            background-color: #f4f7f6; /* 浅灰色背景，看起来比较高级 */
             display: flex; 
             justify-content: center; 
             align-items: center; 
             height: 100vh; 
             margin: 0; 
-            overflow: hidden; 
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; /* 中文字体优化 */
         }
-        img { 
-            max-width: 100%; 
-            max-height: 100vh; 
-            object-fit: contain;
+
+        /* 核心卡片样式 */
+        .card {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 16px; /* 圆角 */
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); /* 柔和的阴影 */
+            text-align: center;
+            max-width: 350px;
+            width: 90%;
+        }
+
+        /* 头像样式 */
+        .avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%; /* 变成圆形 */
+            object-fit: cover; /* 保证图片不变形 */
+            border: 4px solid #fff;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        /* 名字样式 */
+        h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        /* 简介文字样式 */
+        .bio {
+            color: #777;
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        /* 按钮组样式 */
+        .links {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            text-decoration: none;
+            color: #fff;
+            background-color: #007aff; /* 苹果蓝 */
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s; /* 鼠标悬停动画 */
+        }
+
+        .btn:hover {
+            background-color: #005bb5;
+            transform: translateY(-2px); /* 鼠标放上去微微上浮 */
+        }
+        
+        /* 第二个按钮换种颜色 */
+        .btn.secondary {
+            background-color: #e5e5ea;
+            color: #333;
+        }
+        .btn.secondary:hover {
+            background-color: #d1d1d6;
         }
     </style>
 </head>
 <body>
-    <!-- 这里只放图片，没有多余文字，不乱改内容 -->
-    <img src="张成.jpg" alt="张成">
+
+    <div class="card">
+        <!-- 你的图片作为头像，如果你想用别的图，改 src 里的名字 -->
+        <img src="张成.jpg" alt="头像" class="avatar">
+        
+        <!-- 名字 -->
+        <h1>张成</h1>
+        
+        <!-- 简介文字（你可以随便改这里的话） -->
+        <p class="bio">
+            你好！欢迎来到我的个人主页。<br>
+            这是一个极简风格的简介模板。
+        </p>
+        
+        <!-- 按钮链接（把 # 换成你的真实网址） -->
+        <div class="links">
+            <a href="#" class="btn">联系我</a>
+            <a href="#" class="btn secondary">我的博客</a>
+        </div>
+    </div>
+
 </body>
 </html>
